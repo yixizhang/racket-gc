@@ -1,0 +1,25 @@
+#lang plai/gc2/mutator
+(allocator-setup "coll.rkt" 200)
+(define (build-one)
+  (let* ((x0 #f)
+         (x1 #t)
+         (x2
+          (lambda (x)
+            (if (= x 0)
+              x0
+              (if (= x 1) x1 (if (= x 2) x0 (if (= x 3) x1 x1))))))
+         (x3 (cons x1 x0))
+         (x4 (cons x3 #f))
+         (x5 (cons x2 x0)))
+    (set-rest! x4 x5)
+    x4))
+(define (traverse-one x4) (if (rest (first x4)) #f #t))
+(define (trigger-gc n)
+  (if (zero? n) 0 (begin (cons n n) (trigger-gc (- n 1)))))
+(define (loop i)
+  (if (zero? i)
+    'passed
+    (let ((obj (build-one)))
+      (trigger-gc 200)
+      (if (traverse-one obj) (loop (- i 1)) 'failed))))
+(loop 200)
