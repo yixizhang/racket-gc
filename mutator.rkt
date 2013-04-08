@@ -49,7 +49,12 @@
           (mutator-for-each for-each)
           (mutator-read-char read-char)
           (mutator-peek-char peek-char)
-          (mutator-eof-object? eof-object?)))
+          (mutator-eof-object? eof-object?)
+          (mutator-make-vector make-vector)
+          (mutator-vector-length vector-legnth)
+          (mutator-vector-ref vector-ref)
+          (mutator-vector-set! vector-set!)
+          ))
 
 (define-syntax-parameter mutator-name #f)
 (define-syntax-parameter mutator-tail-call? #t)
@@ -377,6 +382,8 @@
                                     gc:first gc:rest 
                                     gc:flat? gc:cons?
                                     gc:set-first! gc:set-rest!
+                                    gc:vector gc:vector-length
+                                    gc:vector-ref gc:vector-set!
                                     gc:alloc-struct gc:alloc-struct-instance
                                     gc:struct-pred gc:struct-select)
                     (map (λ (s) (datum->syntax stx s))
@@ -385,6 +392,8 @@
                                           gc:first gc:rest 
                                           gc:flat? gc:cons?
                                           gc:set-first! gc:set-rest!
+                                          gc:vector gc:vector-length
+                                          gc:vector-ref gc:vector-set!
                                           gc:alloc-struct gc:alloc-struct-instance
                                           gc:struct-pred gc:struct-select))]) 
        (begin
@@ -406,6 +415,10 @@
              (set-collector:closure?! gc:closure?)
              (set-collector:closure-code-ptr! gc:closure-code-ptr)
              (set-collector:closure-env-ref! gc:closure-env-ref)
+             (set-collector:vector! gc:vector)
+             (set-collector:vector-length! gc:vector-length)
+             (set-collector:vector-ref! gc:vector-ref)
+             (set-collector:vector-set!! gc:vector-set!)
              (set-collector:alloc-struct! gc:alloc-struct)
              (set-collector:alloc-struct-instance! gc:alloc-struct-instance)
              (set-collector:struct-pred! gc:struct-pred)
@@ -530,6 +543,17 @@
 (define (mutator-eof-object? thing)
   (collector:alloc-flat
    (eof-object? thing)))
+
+(define (mutator-make-vector length value)
+  (collector:vector length (collector:alloc-flat value)))
+(define (mutator-vector-length loc)
+  (collector:vector-length loc))
+(define (mutator-vector-ref loc number)
+  (gc->scheme (collector:vector-ref loc number)))
+(define (mutator-vector-set! loc number value)
+  (collector:vector-set! loc number (collector:alloc-flat value))
+  (void))
+
 (define (mutator-for-each f l)
   (mutator-if (empty? (collector:deref l))
               (void)

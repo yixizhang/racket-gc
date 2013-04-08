@@ -30,6 +30,10 @@
   closure?
   closure-code-ptr
   closure-env-ref
+  vector
+  vector-length
+  vector-ref
+  vector-set!
   alloc-struct
   alloc-struct-instance
   struct-pred

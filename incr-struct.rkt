@@ -124,34 +124,41 @@
   next)
 
 ;; vector related
-;; gc:vector : number -> loc
-(define (gc:vector len)
-  (define next (alloc (+ len 2) #f #f))
+;; gc:vector : number loc -> loc
+(define (gc:vector length loc)
+  (define next (alloc (+ length 2) #f #f))
   (heap-set! next 'vector)
   (heap-set! (+ next 1) len)
   (for ([i (in-range len)])
-       (heap-set! (+ next 2 i) 'free)))
+       (heap-set! (+ next 2 i) loc))
+  next)
 
 (define (gc:vector-length loc)
   (if (gc:vector? loc)
     (heap-ref (+ loc 1))
     (error 'gc:vector-length "non vector")))
 
+;; gc:vector-ref loc number -> loc
 (define (gc:vector-ref loc number)
-  (if (<= number (gc:vector-length loc))
-    (heap-ref (+ loc 2 number))
-    (error 'gc:vector-ref "vector index out of range")))
+  (cond
+    [(<= number (gc:vector-length loc))
+     (heap-ref (+ loc 2 number))]
+    [else
+      (error 'gc:vector-ref "vector index out of range")]))
 
 (define (gc:vector? loc)
   (or (equal? (heap-ref loc) 'vector)
       (equal? (heap-ref loc) 'white-vector)
       (equal? (heap-ref loc) 'grey-vector)))
 
+;; gc:vector-set! : loc number loc -> void
 (define (gc:vector-set! loc number thing)
-  (if (<= number (gc:vector-length loc))
-    (heap-set! (+ loc 2 number) thing)
-    (write-barrier loc thing)
-    (error 'gc:vector-set! "vector index out of range")))
+  (cond 
+    [(<= number (gc:vector-length loc))
+     (heap-set! (+ loc 2 number) thing)
+     (write-barrier loc thing)]
+    [else
+      (error 'gc:vector-set! "vector index out of range")]))
 
 ;; define-struct related
 ;; gc:alloc-struct : symbol loc number -> loc

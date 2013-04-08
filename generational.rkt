@@ -348,20 +348,24 @@
   (free-white! start))
 
 (define (make-pointers-to-2nd-gen-roots start)
-  (case (heap-ref/check! start)
-    [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
-    [(pair) (define loc (heap-ref/check! (+ start 1)))
-            (when (2nd-gen? loc) (traverse/roots loc))
-            (define loc (heap-ref/check! (+ start 2)))
-            (when (2nd-gen? loc) (traverse/roots loc))
-            (make-pointers-to-2nd-gen-roots (+ start 3))]
-    [(proc) (define fv-counts (heap-ref/check! (+ start 2)))
-            (for ([i (in-range fv-counts)])
-                 (define loc (heap-ref/check! (+ start 3 i)))
-                 (when (2nd-gen? loc) (traverse/roots loc)))
-            (make-pointers-to-2nd-gen-roots (+ start 3 fv-counts))]
-    [(free) (void)]
-    [else (error 'make-pointers-to-2nd-gen-roots "wrong tag at ~a" start)]))
+  (cond
+    [(= start (1st-gen-size))
+     (void)]
+    [else
+      (case (heap-ref/check! start)
+        [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
+        [(pair) (define loc (heap-ref/check! (+ start 1)))
+                (when (2nd-gen? loc) (traverse/roots loc))
+                (define loc (heap-ref/check! (+ start 2)))
+                (when (2nd-gen? loc) (traverse/roots loc))
+                (make-pointers-to-2nd-gen-roots (+ start 3))]
+        [(proc) (define fv-counts (heap-ref/check! (+ start 2)))
+                (for ([i (in-range fv-counts)])
+                     (define loc (heap-ref/check! (+ start 3 i)))
+                     (when (2nd-gen? loc) (traverse/roots loc)))
+                (make-pointers-to-2nd-gen-roots (+ start 3 fv-counts))]
+        [(free) (void)]
+        [else (error 'make-pointers-to-2nd-gen-roots "wrong tag at ~a" start)])]))
 
 (define (mark-white! i)
   (when (< i (2nd-gen-size))

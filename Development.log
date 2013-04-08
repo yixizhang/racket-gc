@@ -1,0 +1,14 @@
+week 04-08-13
+===
+add modulo, etc., to mutator
+update mutator so it supports *values*
+try depth-first for copying traverse/ref
+maybe double vector size when all slots are filled (check paper/algo/wiki)
+===
+add make-vector/vector-ref/vector-set!, etc., in mutator
+stored in vector slot should be ptr to pair
+each hash-key corresponds to a list of values
+gc:vector should alloc a vector and set each slot to given loc
+(and (procedure? fail) (procedure-arity-includes? fail 0))
+make-pointers-to-2nd-gen-root should check the case that to-space in young generation is exactly full
+change if to cond in gc:vector-set!
