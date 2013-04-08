@@ -59,11 +59,13 @@
      (write-barrier pr-ptr new)]
     [else (error 'set-rest! "non pair @ ~s" pr-ptr)]))
 
-(define (write-barrier pr-ptr new) 
-  (when (and (equal? (heap-ref pr-ptr) 'pair)
+(define (write-barrier ptr new) 
+  (when (and (or (equal? (heap-ref ptr) 'pair)
+                 (equal? (heap-ref ptr) 'vector))
              (or (equal? (heap-ref new) 'white-pair)
                  (equal? (heap-ref new) 'white-flat)
                  (equal? (heap-ref new) 'white-proc)
+                 (equal? (heap-ref new) 'white-vector)
                  (equal? (heap-ref new) 'white-struct)
                  (equal? (heap-ref new) 'white-struct-instance)))
     (case (heap-ref new)
@@ -73,6 +75,8 @@
                     (push/cont new)]
       [(white-proc) (heap-set/check! new 'grey-proc)
                     (push/cont new)]
+      [(white-vector) (heap-set/check! new 'grey-vector)
+                      (push/cont new)]
       [(white-struct) (heap-set/check! new 'grey-struct)
                     (push/cont new)]
       [(white-struct-instance) (heap-set/check! new 'grey-struct-instance)
@@ -118,6 +122,36 @@
     (heap-set/check! (+ next 3 x)
                (vector-ref free-vars x)))
   next)
+
+;; vector related
+;; gc:vector : number -> loc
+(define (gc:vector len)
+  (define next (alloc (+ len 2) #f #f))
+  (heap-set! next 'vector)
+  (heap-set! (+ next 1) len)
+  (for ([i (in-range len)])
+       (heap-set! (+ next 2 i) 'free)))
+
+(define (gc:vector-length loc)
+  (if (gc:vector? loc)
+    (heap-ref (+ loc 1))
+    (error 'gc:vector-length "non vector")))
+
+(define (gc:vector-ref loc number)
+  (if (<= number (gc:vector-length loc))
+    (heap-ref (+ loc 2 number))
+    (error 'gc:vector-ref "vector index out of range")))
+
+(define (gc:vector? loc)
+  (or (equal? (heap-ref loc) 'vector)
+      (equal? (heap-ref loc) 'white-vector)
+      (equal? (heap-ref loc) 'grey-vector)))
+
+(define (gc:vector-set! loc number thing)
+  (if (<= number (gc:vector-length loc))
+    (heap-set! (+ loc 2 number) thing)
+    (write-barrier loc thing)
+    (error 'gc:vector-set! "vector index out of range")))
 
 ;; define-struct related
 ;; gc:alloc-struct : symbol loc number -> loc
@@ -207,6 +241,9 @@
         (find-free-space
          (+ start 3 (heap-ref (+ start 2)))
          size)]
+       [(vector grey-vector white-vector)
+        (find-free-space
+          (+ start 2 (heap-ref (+ start 2))))]
        [(struct grey-struct white-struct) (find-free-space (+ start 4) size)]
        [(struct-instance grey-struct-instance white-struct-instance)
         (find-free-space
@@ -234,6 +271,9 @@
       [(proc) (heap-set! i 'white-proc)
               (mark-white!
                (+ i 3 (heap-ref (+ i 2))))]
+      [(vector) (heap-set! i 'white-vector)
+                (mark-white!
+                  (+ i 2 (heap-ref (+ i 2))))]
       [(struct) (heap-set! i 'white-struct)
                 (mark-white! (+ i 4))]
       [(struct-instance) (heap-set! i 'white-struct-instance)
@@ -254,25 +294,26 @@
                          (heap-set! (+ i 1) 'free)
                          (heap-set! (+ i 2) 'free)
                          (heap-set! 1 (- (heap-ref 1) 3))
-                         (unless (>= (heap-ref 1) 0) (error 'free-white! "< 0"))
                          (free-white! (+ i 3))]
       [(white-flat) (heap-set! i 'free)
                     (heap-set! (+ i 1) 'free)
                     (heap-set! 1 (- (heap-ref 1) 2))
-                    (unless (>= (heap-ref 1) 0) (error 'free-white! "< 0"))
                     (free-white! (+ i 2))]
       [(white-proc) (define closure-size (heap-ref (+ i 2)))
                     (for ([dx (in-range 0 (+ closure-size 3))])
                       (heap-set! (+ i dx) 'free))
                     (heap-set! 1 (- (heap-ref 1) (+ 3 closure-size)))
-                    (unless (>= (heap-ref 1) 0) (error 'free-white! "< 0"))
                     (free-white! (+ i 3 closure-size))]
+      [(white-vector) (define size (heap-ref (+ i 1)))
+                      (for ([dx (in-range (+ size 2))])
+                           (heap-set! (+ i dx) 'free))
+                      (heap-set! 1 (- (heap-ref 1) (+ 2 size)))
+                      (free-white! (+ i 2 size))]
       [(white-struct) (heap-set! i 'free)
                       (heap-set! (+ i 1) 'free)
                       (heap-set! (+ i 2) 'free)
                       (heap-set! (+ i 3) 'free)
                       (heap-set! 1 (- (heap-ref 1) 4))
-                      (unless (>= (heap-ref 1) 0) (error 'free-white! "< 0"))
                       (free-white! (+ i 4))]
       [(white-struct-instance) (heap-set! i 'free)
                                (heap-set! (+ i 1) 'free)
@@ -280,7 +321,6 @@
                                (for ([dx (in-range 0 fields-size)])
                                     (heap-set! (+ i dx) 'free))
                                (heap-set! 1 (- (heap-ref 1) (+ 2 fields-size)))
-                               (unless (>= (heap-ref 1) 0) (error 'free-white! "< 0"))
                                (free-white! (+ i 2 fields-size))]
       [(free) (free-white! (+ i 1))]
       [else (error 'free-white! "unknown tag ~s" (heap-ref i))])))
@@ -340,6 +380,13 @@
                                    (push/cont (heap-ref (+ ptr 3 i))))
                               (clean/cont loc)
                               (continue/incre-mark)]
+            [(vector grey-vector) (mark-black ptr)
+                                  (define size (heap-ref (+ ptr 1)))
+                                  (step/count (+ 2 size))
+                                  (for ([i (in-range size)])
+                                       (push/cont (heap-ref (+ ptr 2 i))))
+                                  (clean/cont loc)
+                                  (continue/incre-mark)]
             [(struct grey-struct) (mark-black ptr)
                                   (step/count 4)
                                   (define parent (heap-ref (+ ptr 2)))
@@ -368,6 +415,10 @@
      (for ([i (in-range (heap-ref (+ loc 2)))])
           (mark-grey (heap-ref (+ loc 3 i))))
      (heap-set/check! loc 'proc)]
+    [(grey-vector)
+     (for ([i (in-range (heap-ref (+ loc 1)))])
+          (mark-grey (heap-ref (+ loc 2 i))))
+     (heap-set/check! loc 'vector)]
     [(grey-struct)
      (define parent (heap-ref (+ loc 2)))
      (when parent (mark-grey parent))
@@ -385,6 +436,7 @@
     [(white-pair) (heap-set/check! loc 'grey-pair)]
     [(white-flat) (heap-set/check! loc 'grey-flat)]
     [(white-proc) (heap-set/check! loc 'grey-proc)]
+    [(white-vector) (heap-set/check! loc 'grey-vector)]
     [(white-struct) (heap-set/check! loc 'grey-struct)]
     [(white-struct-instance) (heap-set/check! loc 'grey-struct-instance)]
     [(pair flat proc struct struct-instance grey-pair grey-flat grey-proc grey-struct grey-struct-instance cont) (void)]))
@@ -421,6 +473,16 @@
                 (when (white? (heap-ref (+ loc 3 i)))
                   (error 'heap-set/check! "black object points to white object at ~a" loc)))
            (heap-check (+ loc 3 closure-size))])]
+      [(vector)
+       (define size (heap-ref (+ loc 1)))
+       (case size
+         [(free)
+          (heap-check (+ loc 2))]
+         [else
+           (for ([i (in-range size)])
+                (when (white? (heap-ref (+ loc 2 i)))
+                  (error 'heap-set/check! "black object points to white object at ~a" loc)))
+           (heap-check (+ loc 2 size))])]
       [(struct)
        (define parent (heap-ref (+ loc 2)))
        (when (and parent 
@@ -441,6 +503,8 @@
        (heap-check (+ loc 2))]
       [(white-proc grey-proc)
        (heap-check (+ loc 3 (heap-ref (+ loc 2))))]
+      [(white-vector grey-vector)
+       (heap-check (+ loc 2 (Heap-ref (+ loc 1))))]
       [(white-struct grey-struct)
        (heap-check (+ loc 4))]
       [(white-struct-instance grey-struct-instance)
@@ -455,6 +519,7 @@
       [(pair) (check/tag (+ loc 3))]
       [(flat) (check/tag (+ loc 2))]
       [(proc) (check/tag (+ loc 3 (heap-ref (+ loc 2))))]
+      [(vector) (check/tag (+ loc 2 (heap-ref (+ loc 1))))]
       [(struct) (check/tag (+ loc 4))]
       [(struct-instance) (check/tag (+ loc 2 (heap-ref (+ 3 (heap-ref (+ loc 1))))))]
       [(free) (check/tag (+ loc 1))]
@@ -470,6 +535,11 @@
        (case closure-size
          [(free) (check/cont (+ loc 3))]
          [else (check/cont (+ loc 3 closure-size))])]
+      [(vector white-vector grey-vector)
+       (define size (heap-ref (+ loc 1)))
+       (case size
+         [(free) (check/cont (+ loc 2))]
+         [else (check/cont (+ loc 2 size))])]
       [(struct white-struct grey-struct) (check/cont (+ loc 4))]
       [(struct-instance white-struct-instance grey-struct-instance)
        (define fv-count (heap-ref (+ 3 (heap-ref (+ loc 1)))))
@@ -491,7 +561,7 @@
 ;; white? : location? -> boolean?
 (define (white? loc)
   (case (heap-ref loc)
-    [(white-pair white-proc white-flat white-struct white-struct-instance)
+    [(white-pair white-proc white-flat white-vector white-struct white-struct-instance)
      true]
     [else false]))
 
