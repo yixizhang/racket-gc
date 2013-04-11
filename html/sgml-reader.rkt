@@ -10,7 +10,7 @@
 
 ;; Kid-lister : (Symbol -> (U (listof Symbol) #f))
 
-(define (null? thing) (equal? thing empty)
+(define (null? thing) (empty? thing))
 (define (list thing) (cons thing empty))
 (define (not pred) (if pred #f #t))
 (define-struct hash-table (vec))
