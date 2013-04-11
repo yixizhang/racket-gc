@@ -539,7 +539,8 @@
                  (collector:deref b)))]
     [(and (collector:cons? a)
           (collector:cons? b))
-     #t] ;; TODO: see simple-strategy in Kent's paper
+     ;; TODO: see simple-strategy in Kent's paper
+     (equal? (gc->scheme a) (gc->scheme b))]
     [(and (collector:closure? a)
           (collector:closure? b))
      (= a b)]
