@@ -141,7 +141,7 @@
 ;; gc:vector-ref loc number -> loc
 (define (gc:vector-ref loc number)
   (cond
-    [(<= number (gc:vector-length loc))
+    [(< number (gc:vector-length loc))
      (heap-ref (+ loc 2 number))]
     [else
       (error 'gc:vector-ref "vector index out of range")]))
@@ -154,7 +154,7 @@
 ;; gc:vector-set! : loc number loc -> void
 (define (gc:vector-set! loc number thing)
   (cond 
-    [(<= number (gc:vector-length loc))
+    [(< number (gc:vector-length loc))
      (heap-set! (+ loc 2 number) thing)
      (write-barrier loc thing)]
     [else

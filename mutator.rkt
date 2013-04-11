@@ -529,8 +529,29 @@
    (member? (collector:deref v)
             (gc->scheme l))))
 (define (mutator-equal? a b)
-  (collector:alloc-flat
-    (equal? a b)))
+  (collector:alloc-flat (mutator-equal?-helper a b)))
+(define (mutator-equal?-helper a b)
+  (cond
+    [(and (collector:flat? a)
+          (collector:flat? b))
+     (or (= a b)
+         (equal? (collector:deref a)
+                 (collector:deref b)))]
+    [(and (collector:cons? a)
+          (collector:cons? b))
+     #t] ;; TODO: see simple-strategy in Kent's paper
+    [(and (collector:closure? a)
+          (collector:closure? b))
+     (= a b)]
+    [(and (collector:vector? a)
+          (collector:vector? b))
+     (let ([l (collector:vector-length a)])
+       (cond
+         [(= l (collector:vector-length b))
+          (for/and ([i (in-range l)])
+                   (mutator-equal?-helper (collector:vector-ref a i)
+                                          (collector:vector-ref b i)))]
+         [else #f]))]))
 (define (mutator-current-input-port)
   (collector:alloc-flat
    (current-input-port)))
@@ -547,9 +568,9 @@
 (define (mutator-make-vector length loc)
   (collector:vector length loc))
 (define (mutator-vector-length loc)
-  (collector:vector-length loc))
+  (colletor:alloc-flat (collector:vector-length loc)))
 (define (mutator-vector-ref loc number)
-  (gc->scheme (collector:vector-ref loc number)))
+  (collector:vector-ref loc number))
 (define (mutator-vector-set! loc number a-loc)
   (collector:vector-set! loc number a-loc)
   (void))
