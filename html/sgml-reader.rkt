@@ -11,7 +11,6 @@
 ;; Kid-lister : (Symbol -> (U (listof Symbol) #f))
 
 (define (null? thing) (empty? thing))
-(define (list thing) (cons thing empty))
 (define (not pred) (if pred #f #t))
 (define-struct hash-table (vec))
 (define-struct kv (key value))
@@ -23,24 +22,38 @@
          [vs (vector-ref v index)]
          [kv (make-kv key value)])
     (cond
-      [(null? vs) (vector-set! v index (list kv))]
-      [else (append! vs (list kv))])))
+      [(null? vs) (vector-set! v index (cons kv empty))]
+      [else (let ([set/append-it 47])
+              (begin
+                (set! set/append-it
+                  (lambda (l)
+                    (cond
+                      [(null? l) (append! vs (cons kv empty))]
+                      [else
+                        (let ([a-kv (first l)])
+                          (if (equal? (kv-key a-kv) key)
+                            (set-first! l kv)
+                            (set/append-it (rest l))))])))
+                (set/append-it vs)))])))
 (define (hash-ref hash key fail)
   (let* ([i (equal-hash-code key)]
          [v (hash-table-vec hash)]
          [vs (vector-ref v (modulo i (vector-length v)))]
-         [get-it (lambda (vs)
-                   (cond
-                     [(null? vs) (if (and (procedure? fail)
-                                          (procedure-arity-includes? fail 0))
-                                     (fail)
-                                     fail)]
-                     [else
-                      (let ([kv (first vs)])
-                        (if (equal? (kv-key kv) key)
-                            (kv-value kv)
-                            (get-it (rest vs))))]))])
-    (get-it vs)))
+         [get-it 47])
+    (begin
+      (set! get-it 
+        (lambda (vs)
+          (cond
+            [(null? vs) (if (and (procedure? fail)
+                                 (procedure-arity-includes? fail 0))
+                          (fail)
+                          fail)]
+            [else
+              (let ([kv (first vs)])
+                (if (equal? (kv-key kv) key)
+                  (kv-value kv)
+                  (get-it (rest vs))))])))
+      (get-it vs))))
 (define (compose f g)
   (lambda (x)
     (f (g x))))
