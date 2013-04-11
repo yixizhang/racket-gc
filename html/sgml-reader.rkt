@@ -10,12 +10,12 @@
 
 ;; Kid-lister : (Symbol -> (U (listof Symbol) #f))
 
-(define (null? thing) (equal? thing '()))
-(define (list thing) (cons thing '()))
+(define (null? thing) (equal? thing empty)
+(define (list thing) (cons thing empty))
 (define (not pred) (if pred #f #t))
 (define-struct hash-table (vec))
 (define-struct kv (key value))
-(define (make-hash) (make-hash-table (make-vector 100 null)))
+(define (make-hash) (make-hash-table (make-vector 100 empty)))
 (define (hash-set! hash key value)
   (let* ([i (equal-hash-code key)]
          [v (hash-table-vec hash)]

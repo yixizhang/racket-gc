@@ -544,14 +544,14 @@
   (collector:alloc-flat
    (eof-object? thing)))
 
-(define (mutator-make-vector length value)
-  (collector:vector length (collector:alloc-flat value)))
+(define (mutator-make-vector length loc)
+  (collector:vector length loc))
 (define (mutator-vector-length loc)
   (collector:vector-length loc))
 (define (mutator-vector-ref loc number)
   (gc->scheme (collector:vector-ref loc number)))
-(define (mutator-vector-set! loc number value)
-  (collector:vector-set! loc number (collector:alloc-flat value))
+(define (mutator-vector-set! loc number a-loc)
+  (collector:vector-set! loc number a-loc)
   (void))
 
 (define (mutator-for-each f l)
