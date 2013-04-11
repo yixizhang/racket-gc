@@ -61,10 +61,14 @@
            (append (rest some-list) more-list))]))
 (define (append! some-list more-list)
   (cond
-    [(null? (rest some-list))
-     (set-rest! some-list more-list)]
+    [(and (cons? some-list) (cons? more-list))
+     (cond
+       [(null? (rest some-list))
+        (set-rest! some-list more-list)]
+       [else
+         (append! (rest some-list) more-list)])]
     [else
-      (append! (rest some-list) more-list)]))
+      (error 'append! "expected both args to be cons")]))
 
 (provide read-html-comments
          trim-whitespace
