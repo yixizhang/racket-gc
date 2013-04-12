@@ -14,6 +14,7 @@
          (for-syntax scheme/stxparam-exptime))
 
 (provide else require provide #%top
+         values
          test/location=? 
          test/value=?
          (rename-out
@@ -309,13 +310,26 @@
         (case-lambda
           [() (void)]
           [(result-addr)
-           (cond
-             [(procedure? result-addr)
-              (printf "Imported procedure:\n")
-              result-addr]
-             [(location? result-addr)
-              (printf "Value at location ~a:\n" result-addr)
-              (gc->scheme result-addr)])])))]))
+           (show-one-result result-addr)]
+          [result-addrs
+            (show-multiple-results result-addrs)])))]))
+(define (show-one-result result-addr)
+  (cond
+    [(procedure? result-addr)
+     (printf "Imported procedure:\n")
+     result-addr]
+    [(location? result-addr)
+     (printf "Value at location ~a:\n" result-addr)
+     (gc->scheme result-addr)]))
+(define (show-multiple-results results)
+  (apply values
+         (for/list ([result (in-list results)])
+                   (cond
+                     [(procedure? result)
+                      result]
+                     [(location? result)
+                      (gc->scheme result)]))))
+
 ;; define-struct : number symbol (listof symbol) -> mutator-define functions ...
 (define-syntax (define-struct/offset stx)
   (syntax-case stx ()

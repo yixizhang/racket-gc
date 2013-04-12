@@ -183,8 +183,7 @@
                          [ok-kids (may-contain start-name)])
                     (let-values ([(content remaining)
                                   (cond
-                                    ;;[(null? ok-kids) (values null tokens)]
-                                    [(null? ok-kids) (cons '() tokens)]
+                                    [(null? ok-kids) (values null tokens)]
                                     [else 
                                      ;; read-content : (listof Token) -> (listof Content) (listof Token)
                                      (let ([read-content 99])
@@ -192,8 +191,7 @@
                                          (set! read-content
                                                (lambda (_tokens)
                                                  (cond
-                                                   ;;[(null? tokens) (values null tokens)]
-                                                   [(null? _tokens) (cons '() _tokens)]
+                                                   [(null? tokens) (values null tokens)]
                                                    [else
                                                     (let ([tok (first _tokens)] [next-tokens (rest _tokens)])
                                                       (cond
@@ -205,8 +203,7 @@
                                                                (if (and ok-kids
                                                                         (not (memq name ok-kids))
                                                                         (may-contain name))
-                                                                   ;;(values null tokens)
-                                                                   (cons '() _tokens)
+                                                                   (values null tokens)
                                                                    (let ([element+post-hook (read-el tok (cons name context) next-tokens)])
                                                                      (let ([element (first element+post-hook)]
                                                                            [post-hook (first (rest element+post-hook))])

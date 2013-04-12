@@ -1,11 +1,11 @@
 week 04-08-13
 ===
 add modulo, etc., to mutator
-support of vector/struct/struct-instance for gc->scheme/member?/equal?, etc.
-update mutator so it supports *values*
 try depth-first for copying traverse/ref
+support of vector/struct/struct-instance for gc->scheme/member?/equal?, etc.
 maybe double vector size when all slots are filled (check paper/algo/wiki)
 ===
+update mutator so it supports *values*
 add make-vector/vector-ref/vector-set!, etc., in mutator
 stored in vector slot should be ptr to pair
 each hash-key corresponds to a list of values
