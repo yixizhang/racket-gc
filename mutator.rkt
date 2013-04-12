@@ -55,6 +55,7 @@
           (mutator-vector-length vector-legnth)
           (mutator-vector-ref vector-ref)
           (mutator-vector-set! vector-set!)
+          (mutator-modulo modulo)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -579,6 +580,10 @@
 (define (mutator-eof-object? thing)
   (collector:alloc-flat
    (eof-object? thing)))
+(define (mutator-modulo x y)
+  (collector:alloc-flat
+    (modulo (collector:deref x)
+            (collector:deref y))))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))
