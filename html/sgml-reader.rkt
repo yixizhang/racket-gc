@@ -21,20 +21,19 @@
          [index (modulo i (vector-length v))]
          [vs (vector-ref v index)]
          [kv (make-kv key value)])
-    (cond
-      [(null? vs) (vector-set! v index (cons kv empty))]
-      [else (let ([set/append-it 47])
-              (begin
-                (set! set/append-it
-                  (lambda (l)
-                    (cond
-                      [(null? l) (append! vs (cons kv empty))]
-                      [else
-                        (let ([a-kv (first l)])
-                          (if (equal? (kv-key a-kv) key)
-                            (set-first! l kv)
-                            (set/append-it (rest l))))])))
-                (set/append-it vs)))])))
+      (let ([set/append-it 47])
+        (begin
+          (set! set/append-it
+            (lambda (l)
+              (cond
+                [(null? l) 
+                 (vector-set! v index (append! vs (cons kv empty)))]
+                [else
+                  (let ([a-kv (first l)])
+                    (if (equal? (kv-key a-kv) key)
+                      (set-first! l kv)
+                      (set/append-it (rest l))))])))
+          (set/append-it vs)))))
 (define (hash-ref hash key fail)
   (let* ([i (equal-hash-code key)]
          [v (hash-table-vec hash)]
@@ -72,16 +71,21 @@
     [else
      (cons (first some-list)
            (append (rest some-list) more-list))]))
+(define (list? l) (or (cons? l) (empty? l)))
+;; append! : list list -> list
 (define (append! some-list more-list)
   (cond
-    [(and (cons? some-list) (cons? more-list))
+    [(and (list? some-list) (list? more-list))
      (cond
+       [(null? some-list) 
+        more-list]
        [(null? (rest some-list))
-        (set-rest! some-list more-list)]
+        (set-rest! some-list more-list)
+        some-list]
        [else
          (append! (rest some-list) more-list)])]
     [else
-      (error 'append! "expected both args to be cons")]))
+      (error 'append! "require list for both arguments")]))
 
 (provide read-html-comments
          trim-whitespace
