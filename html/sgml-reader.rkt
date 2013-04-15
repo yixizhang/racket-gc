@@ -72,8 +72,7 @@
      (cons (first some-list)
            (append (rest some-list) more-list))]))
 (define (list? l)
-  (or (empty? (last l))
-      (empty? l)))
+  (or (empty? l) (and (cons? l) (list? (rest l)))))
 (define (last l)
   (cond
     [(cons? l)
@@ -84,15 +83,10 @@
 ;; append! : list list -> list
 (define (append! some-list more-list)
   (cond
+    [(and (null? some-lst) (list? more-list))
+     more-list]
     [(and (list? some-list) (list? more-list))
-     (cond
-       [(null? some-list) 
-        more-list]
-       [(null? (rest some-list))
-        (set-rest! some-list more-list)
-        some-list]
-       [else
-         (append!-helper (rest some-list) more-list)])]
+     (append!-helper some-list some-list more-list)]
     [else
       (error 'append! "require list for both arguments")]))
 (define (append!-helper orig-list some-list more-list)
