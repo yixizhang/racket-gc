@@ -545,29 +545,18 @@
             (gc->scheme l))))
 (define (mutator-equal? a b)
   (collector:alloc-flat (mutator-equal?-helper a b)))
-(define (mutator-equal?-helper a b)
-  (cond
-    [(and (collector:flat? a)
-          (collector:flat? b))
-     (or (= a b)
-         (equal? (collector:deref a)
-                 (collector:deref b)))]
-    [(and (collector:cons? a)
-          (collector:cons? b))
-     ;; TODO: see simple-strategy in Kent's paper
-     (equal? (gc->scheme a) (gc->scheme b))]
-    [(and (collector:closure? a)
-          (collector:closure? b))
-     (= a b)]
-    [(and (collector:vector? a)
-          (collector:vector? b))
-     (let ([l (collector:vector-length a)])
-       (cond
-         [(= l (collector:vector-length b))
-          (for/and ([i (in-range l)])
-                   (mutator-equal?-helper (collector:vector-ref a i)
-                                          (collector:vector-ref b i)))]
-         [else #f]))]))
+(define (mutator-equal? a b)
+  (collector:alloc-flat
+    (or (= a b)
+        (and (or (and (collector:flat? a)
+                      (collector:flat? b))
+                 (and (collector:cons? a)
+                      (collector:cons? b))
+                 (and (collector:closure? a)
+                      (collector:closure? b))
+                 (and (collector:vector? a)
+                      (collector:vector? b)))
+             (equal? (gc->scheme a) (gc->scheme b))))))
 (define (mutator-current-input-port)
   (collector:alloc-flat
    (current-input-port)))
@@ -699,8 +688,16 @@
               [(collector:closure? loc)
                ;; XXX get env?
                (placeholder-set! ph (closure-code-proc (collector:closure-code-ptr loc)))]
+              [(collector:vector? loc)
+               (local [(define vlen (collector:vector-length loc))
+                       (define v (make-vector vlen 0))]
+                      (for ([i (in-range vlen)])
+                           (local [(define p (make-placeholder unset))]
+                                  (placeholder-set! (unwrap (collector:vector-ref loc i)))
+                                  (vector-set! v i p)))
+                      (placeholder-set! ph v))]
               [else 
-               (error (format "gc:flat?, gc:cons?, gc:closure? all returned false for ~a" loc))])
+               (error (format "gc:flat?, gc:cons?, gc:closure?, gc:vector? all returned false for ~a" loc))])
             (placeholder-get ph)))))
   (make-reader-graph (unwrap loc)))
 
