@@ -71,7 +71,16 @@
     [else
      (cons (first some-list)
            (append (rest some-list) more-list))]))
-(define (list? l) (or (cons? l) (empty? l)))
+(define (list? l)
+  (or (empty? (last l))
+      (empty? l)))
+(define (last l)
+  (cond
+    [(cons? l)
+     (cond
+       [(cons? (rest l)) (last (rest l))]
+       [else (rest l)])]
+    [else (error 'last "expected a cons")]))
 ;; append! : list list -> list
 (define (append! some-list more-list)
   (cond
@@ -83,9 +92,16 @@
         (set-rest! some-list more-list)
         some-list]
        [else
-         (append! (rest some-list) more-list)])]
+         (append!-helper (rest some-list) more-list)])]
     [else
       (error 'append! "require list for both arguments")]))
+(define (append!-helper orig-list some-list more-list)
+  (cond
+    [(null? (rest some-list))
+     (set-rest! some-list more-list)
+     orig-list]
+    [else
+      (append!-helper orig-list (rest some-list) more-list)]))
 
 (provide read-html-comments
          trim-whitespace
