@@ -167,8 +167,7 @@
   (change-active-semi-space)
   (forward/roots (get-root-set))
   (forward/roots some-roots)
-  (forward/roots more-roots)
-  (forward/ref (semi-space-start)))
+  (forward/roots more-roots))
 
 ;; space-limit -> integer 
 ;; find limit of current semi-heap
@@ -197,9 +196,12 @@
     [(list? thing)
      (for-each forward/roots thing)]
     [(root? thing)
-     (set-root! thing (forward/loc (read-root thing)))]
+     (define new-addr (forward/loc (read-root thing)))
+     (set-root! thing new-addr)
+     (forward/ref new-addr)]
     [(number? thing)
-     (forward/loc thing)]))
+     (define new-addr (forward/loc thing))
+     (forward/ref new-addr)]))
 
 ;; forward/loc : loc -> loc
 ;; move object to the other semi-space
@@ -246,20 +248,18 @@
 ;; move the referenced object to the other semi-space
 ;; and return the new addr of moved object
 (define (forward/ref loc)
-  (cond
-    [(= loc (heap-ref 0)) (void)]
-    [else
-      (case (heap-ref loc)
-        [(flat) (forward/ref (+ loc 2))]
-        [(pair) (gc:set-first! loc (forward/loc (heap-ref (+ loc 1))))
-                (gc:set-rest! loc (forward/loc (heap-ref (+ loc 2))))
-                (forward/ref (+ loc 3))]
-        [(proc) (define fv-count (heap-ref (+ loc 2)))
-                (for ([x (in-range 0 fv-count)])
-                     (define l (+ loc 3 x))
-                     (heap-set! l (forward/loc (heap-ref l))))
-                (forward/ref (+ loc 3 fv-count))]
-        [else (error 'forward/ref "wrong tag at ~a" loc)])]))
+  (case (heap-ref loc)
+    [(flat) (void)]
+    [(pair) (gc:set-first! loc (forward/loc (heap-ref (+ loc 1))))
+            (gc:set-rest! loc (forward/loc (heap-ref (+ loc 2))))
+            (forward/ref (heap-ref (+ loc 1)))
+            (forward/ref (heap-ref (+ loc 2)))]
+    [(proc) (define fv-count (heap-ref (+ loc 2)))
+            (for ([x (in-range 0 fv-count)])
+                 (define l (+ loc 3 x))
+                 (heap-set! l (forward/loc (heap-ref l)))
+                 (forward/ref (heap-ref l)))]
+    [else (error 'forward/ref "wrong tag at ~a" loc)]))
 
 ;; free the from space 
 ;; after moved all live objects and their offsprings 
