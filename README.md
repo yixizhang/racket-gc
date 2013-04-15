@@ -1,8 +1,8 @@
 racket-gc
 =========
 
-Implementation of Incremental, copying and generational garbage collector in Racket's plai/gc2.
+This research is to compare the efficiency and number of heap operations between traditional mark-sweep and incremental mark-sweep strategy for the 2nd generation of Racket generational garbage collector.
+The repo contains implementation of incremental, copying, generational garbage collector, and related mutator programs written in Racket's plai/gc2.
 
-Plan is to benchmark the efficiencies by xml->html and custom test programs rewritten in plai/gc2/mutator.
-
-The project also includes patches to plai/gc2 itself.
+The speciality of this project is no intepreter or compiler is written or used, as all code is in Racket or subset of Racket itself.
+The project also includes patches to plai/gc2 too.
