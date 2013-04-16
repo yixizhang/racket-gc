@@ -20,6 +20,7 @@
          (rename-out
           [plai-error error]
           
+          [mutator-void void]
           [mutator-and and]
           [mutator-or or]
           [mutator-cond cond]
@@ -41,6 +42,7 @@
           (collector:cons cons)
           (collector:first first)
           (collector:rest rest)
+
           (mutator-equal? equal?)
           (mutator-quote quote)
           (mutator-top-interaction #%top-interaction)
@@ -64,6 +66,8 @@
 
 ; Sugar Macros
 (define-syntax-rule (->address e) e)
+(define (mutator-void)
+  (collector:alloc-flat (void)))
 (define-syntax mutator-and
   (syntax-rules ()
     [(_) (mutator-quote #t)]
