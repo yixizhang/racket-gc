@@ -1,0 +1,5 @@
+#lang plai/gc2/mutator
+
+(allocator-setup "../incr-struct.rkt" 200)
+
+c
