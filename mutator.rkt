@@ -401,8 +401,8 @@
                                     gc:first gc:rest 
                                     gc:flat? gc:cons?
                                     gc:set-first! gc:set-rest!
-                                    gc:vector gc:vector-length
-                                    gc:vector-ref gc:vector-set!
+                                    gc:vector gc:vector? 
+                                    gc:vector-length gc:vector-ref gc:vector-set!
                                     gc:alloc-struct gc:alloc-struct-instance
                                     gc:struct-pred gc:struct-select)
                     (map (λ (s) (datum->syntax stx s))
@@ -411,9 +411,9 @@
                                           gc:first gc:rest 
                                           gc:flat? gc:cons?
                                           gc:set-first! gc:set-rest!
-                                          gc:vector gc:vector-length
-                                          gc:vector-ref gc:vector-set!
-                                          gc:alloc-struct gc:alloc-struct-instance
+                                          gc:vector gc:vector? 
+                                          gc:vector-length gc:vector-ref gc:vector-set!
+                                          gc:alloc-struct gc:alloc-struct-instance 
                                           gc:struct-pred gc:struct-select))]) 
        (begin
          #`(begin
@@ -435,6 +435,7 @@
              (set-collector:closure-code-ptr! gc:closure-code-ptr)
              (set-collector:closure-env-ref! gc:closure-env-ref)
              (set-collector:vector! gc:vector)
+             (set-collector:vector?! gc:vector?)
              (set-collector:vector-length! gc:vector-length)
              (set-collector:vector-ref! gc:vector-ref)
              (set-collector:vector-set!! gc:vector-set!)
@@ -548,8 +549,6 @@
    (member? (collector:deref v)
             (gc->scheme l))))
 (define (mutator-equal? a b)
-  (collector:alloc-flat (mutator-equal?-helper a b)))
-(define (mutator-equal? a b)
   (collector:alloc-flat
     (or (= a b)
         (and (or (and (collector:flat? a)
@@ -581,7 +580,7 @@
 (define (mutator-make-vector length loc)
   (collector:vector length loc))
 (define (mutator-vector-length loc)
-  (colletor:alloc-flat (collector:vector-length loc)))
+  (collector:alloc-flat (collector:vector-length loc)))
 (define (mutator-vector-ref loc number)
   (collector:vector-ref loc number))
 (define (mutator-vector-set! loc number a-loc)

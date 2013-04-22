@@ -31,6 +31,7 @@
   closure-code-ptr
   closure-env-ref
   vector
+  vector?
   vector-length
   vector-ref
   vector-set!

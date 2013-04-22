@@ -35,11 +35,13 @@
      (with-syntax ([(init-allocator gc:deref gc:alloc-flat gc:cons gc:first gc:rest gc:flat?
                                     gc:closure gc:closure? gc:closure-code-ptr gc:closure-env-ref
                                     gc:cons? gc:set-first! gc:set-rest!
+                                    gc:vector gc:vector? gc:vector-length gc:vector-ref gc:vector-set!
                                     gc:alloc-struct gc:alloc-struct-instance gc:struct-pred gc:struct-select)
                     (map (λ (s) (datum->syntax stx s))
                          '(init-allocator gc:deref gc:alloc-flat gc:cons gc:first gc:rest gc:flat? 
                                           gc:closure gc:closure? gc:closure-code-ptr gc:closure-env-ref
                                           gc:cons? gc:set-first! gc:set-rest!
+                                          gc:vector gc:vector? gc:vector-length gc:vector-ref gc:vector-set!
                                           gc:alloc-struct gc:alloc-struct-instance gc:struct-pred gc:struct-select))])
        #`(#%module-begin 
           
@@ -65,6 +67,12 @@
           
           (provide/contract (gc:set-first! (location? location? . -> . void?)))
           (provide/contract (gc:set-rest! (location? location? . -> . void?)))
+
+          (provide/contract (gc:vector (integer? location? . -> . location?)))
+          (provide/contract (gc:vector? (location? . -> . boolean?)))
+          (provide/contract (gc:vector-length (location? . -> . integer?)))
+          (provide/contract (gc:vector-ref (location? integer? . -> . location?)))
+          (provide/contract (gc:vector-set! (location? integer? location? . -> . void?)))
           
           (provide/contract (gc:alloc-struct (symbol? (or/c location? #f) number? . -> . location?)))
           (provide/contract (gc:alloc-struct-instance (location? (vectorof location?) . -> . location?)))

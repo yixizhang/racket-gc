@@ -128,8 +128,8 @@
 (define (gc:vector length loc)
   (define next (alloc (+ length 2) #f #f))
   (heap-set! next 'vector)
-  (heap-set! (+ next 1) len)
-  (for ([i (in-range len)])
+  (heap-set! (+ next 1) length)
+  (for ([i (in-range length)])
        (heap-set! (+ next 2 i) loc))
   next)
 
@@ -511,7 +511,7 @@
       [(white-proc grey-proc)
        (heap-check (+ loc 3 (heap-ref (+ loc 2))))]
       [(white-vector grey-vector)
-       (heap-check (+ loc 2 (Heap-ref (+ loc 1))))]
+       (heap-check (+ loc 2 (heap-ref (+ loc 1))))]
       [(white-struct grey-struct)
        (heap-check (+ loc 4))]
       [(white-struct-instance grey-struct-instance)
