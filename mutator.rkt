@@ -58,6 +58,7 @@
           (mutator-vector-ref vector-ref)
           (mutator-vector-set! vector-set!)
           (mutator-modulo modulo)
+          (mutator-exact-nonnegative-integer? exact-nonnegative-integer?)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -576,6 +577,9 @@
   (collector:alloc-flat
     (modulo (collector:deref x)
             (collector:deref y))))
+(define (mutator-exact-nonnegative-integer? i)
+  (collector:alloc-flat 
+    (exact-nonnegative-integer? (collector:deref i))))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))
