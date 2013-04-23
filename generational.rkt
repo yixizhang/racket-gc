@@ -55,7 +55,7 @@
   (heap-set! (+ ptr 2) (track/loc tl))
   (when (or (at-from-space? hd)
             (at-from-space? tl))
-    (free-from-space))
+    (free-1st-gen))
   ptr)
 
 ;; gc:first : loc -> loc
@@ -138,7 +138,7 @@
     (heap-set! (+ next 3 x)
                (track/loc (vector-ref free-vars x))))
   (when (at-from-space? fv-vars)
-    (free-from-space))
+    (free-1st-gen))
   next)
 
 ;; gc:closure-code-ptr : loc -> heap-value
@@ -172,18 +172,18 @@
 (define (alloc n some-roots more-roots)
   (define addr (heap-ref/check! 0))
   (cond 
-    [(<= (+ addr n) (semi-space-limit))
+    [(<= (+ addr n) (1st-gen-size))
      (heap-set! 0 (+ addr n))
      addr]
     [else
      (collect-garbage some-roots more-roots)
      (define next (heap-ref/check! 0))
-     (unless (<= (+ next n) (semi-space-limit))
+     (unless (<= (+ next n) (1st-gen-size))
        (error 'alloc "no space"))
      (heap-set! 0 (+ next n))
      (unless (or (at-from-space? some-roots)
                  (at-from-space? more-roots))
-       (free-from-space))
+       (free-1st-gen))
      next]))
 
 ;; copy live objects to older generation heap
@@ -300,16 +300,6 @@
             (copy/rest (+ loc 3 (heap-ref/check! (+ loc 2))))]
     [(free) (void)]
     [else (error 'copy/rest "wrong tag at ~a" loc)]))
-
-;;(define (copy/alloc n some-roots more-roots)
-  ;;(define next (find-free-space (1st-gen-size) n))
-  ;;(cond
-    ;;[next next]
-    ;;[else
-      ;;(2nd-gen-gc some-roots more-roots)
-      ;;(define next (find-free-space (1st-gen-size) n))
-      ;;(unless next (error 'copy/alloc "no space"))
-      ;;next]))
 
 (define (find-free-space start size)
   (cond
@@ -552,6 +542,10 @@
     [(right)
      (for ([i (in-range 2 (mid))])
        (heap-set! i 'free))]))
+
+(define (free-1st-gen)
+  (for ([i (in-range 2 (1st-gen-size))])
+       (heap-set! i 'free)))
 
 (define (at-to-space? loc)
   (case (heap-ref/check! 1)
