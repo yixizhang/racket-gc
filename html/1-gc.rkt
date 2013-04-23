@@ -2,6 +2,7 @@
 
 (allocator-setup "../incr-struct.rkt" 200)
 
-(provide a)
+(provide (all-defined-out))
 
 (define a 1)
+17

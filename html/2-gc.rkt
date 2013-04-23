@@ -6,7 +6,5 @@
 
 (define b 2)
 b
-(define c 3)
-c
 
 a

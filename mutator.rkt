@@ -13,7 +13,7 @@
          scheme/stxparam
          (for-syntax scheme/stxparam-exptime))
 
-(provide else require provide #%top
+(provide else require provide #%top all-defined-out
          values
          test/location=? 
          test/value=?
@@ -422,35 +422,34 @@
                    #`(require #,(datum->syntax #'collector-module (alternate-collector)))
                    #`(require collector-module))
              
-             (set-collector:deref! gc:deref)
-             (set-collector:alloc-flat! gc:alloc-flat)
-             (set-collector:cons! gc:cons)
-             (set-collector:first! gc:first)
-             (set-collector:rest! gc:rest)
-             (set-collector:flat?! gc:flat?)
-             (set-collector:cons?! gc:cons?)
-             (set-collector:set-first!! gc:set-first!)
-             (set-collector:set-rest!! gc:set-rest!)
-             (set-collector:closure! gc:closure)
-             (set-collector:closure?! gc:closure?)
-             (set-collector:closure-code-ptr! gc:closure-code-ptr)
-             (set-collector:closure-env-ref! gc:closure-env-ref)
-             (set-collector:vector! gc:vector)
-             (set-collector:vector?! gc:vector?)
-             (set-collector:vector-length! gc:vector-length)
-             (set-collector:vector-ref! gc:vector-ref)
-             (set-collector:vector-set!! gc:vector-set!)
-             (set-collector:alloc-struct! gc:alloc-struct)
-             (set-collector:alloc-struct-instance! gc:alloc-struct-instance)
-             (set-collector:struct-pred! gc:struct-pred)
-             (set-collector:struct-select! gc:struct-select)
+             (set-collector:deref! 'collector-module gc:deref)
+             (set-collector:alloc-flat! 'collector-module gc:alloc-flat)
+             (set-collector:cons! 'collector-module gc:cons)
+             (set-collector:first! 'collector-module gc:first)
+             (set-collector:rest! 'collector-module gc:rest)
+             (set-collector:flat?! 'collector-module gc:flat?)
+             (set-collector:cons?! 'collector-module gc:cons?)
+             (set-collector:set-first!! 'collector-module gc:set-first!)
+             (set-collector:set-rest!! 'collector-module gc:set-rest!)
+             (set-collector:closure! 'collector-module gc:closure)
+             (set-collector:closure?! 'collector-module gc:closure?)
+             (set-collector:closure-code-ptr! 'collector-module gc:closure-code-ptr)
+             (set-collector:closure-env-ref! 'collector-module gc:closure-env-ref)
+             (set-collector:vector! 'collector-module gc:vector)
+             (set-collector:vector?! 'collector-module gc:vector?)
+             (set-collector:vector-length! 'collector-module gc:vector-length)
+             (set-collector:vector-ref! 'collector-module gc:vector-ref)
+             (set-collector:vector-set!! 'collector-module gc:vector-set!)
+             (set-collector:alloc-struct! 'collector-module gc:alloc-struct)
+             (set-collector:alloc-struct-instance! 'collector-module gc:alloc-struct-instance)
+             (set-collector:struct-pred! 'collector-module gc:struct-pred)
+             (set-collector:struct-select! 'collector-module gc:struct-select)
              
-             (init-heap! (#%datum . heap-size))
+             (init-heap! (#%datum . heap-size) init-allocator)
              (when (gui-available?) 
                (if (<= (#%datum . heap-size) 500)
                    (set-ui! (dynamic-require `plai/gc2/private/gc-gui 'heap-viz%))
-                   (printf "Large heap; the heap visualizer will not be displayed.\n")))
-             (init-allocator))))]
+                   (printf "Large heap; the heap visualizer will not be displayed.\n"))))))]
     [_ (raise-syntax-error 'mutator 
                            "Mutator must start with an 'allocator-setup' expression, such as: (allocator-setup <module-path> <literal-number>)"
                            stx)]))
