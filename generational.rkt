@@ -177,7 +177,6 @@
      addr]
     [else
      (collect-garbage some-roots more-roots)
-     (copy-live-to-older some-roots more-roots)
      (define next (heap-ref/check! 0))
      (unless (<= (+ next n) (semi-space-limit))
        (error 'alloc "no space"))
@@ -302,15 +301,15 @@
     [(free) (void)]
     [else (error 'copy/rest "wrong tag at ~a" loc)]))
 
-(define (copy/alloc n some-roots more-roots)
-  (define next (find-free-space (1st-gen-size) n))
-  (cond
-    [next next]
-    [else
-      (2nd-gen-gc some-roots more-roots)
-      (define next (find-free-space (1st-gen-size) n))
-      (unless next (error 'copy/alloc "no space"))
-      next]))
+;;(define (copy/alloc n some-roots more-roots)
+  ;;(define next (find-free-space (1st-gen-size) n))
+  ;;(cond
+    ;;[next next]
+    ;;[else
+      ;;(2nd-gen-gc some-roots more-roots)
+      ;;(define next (find-free-space (1st-gen-size) n))
+      ;;(unless next (error 'copy/alloc "no space"))
+      ;;next]))
 
 (define (find-free-space start size)
   (cond
@@ -344,7 +343,7 @@
   (traverse/roots (get-root-set))
   (traverse/roots some-roots)
   (traverse/roots more-roots)
-  (make-pointers-to-2nd-gen-roots (semi-space-start))
+  (make-pointers-to-2nd-gen-roots 2)
   (free-white! start))
 
 (define (make-pointers-to-2nd-gen-roots start)
@@ -354,10 +353,10 @@
     [else
       (case (heap-ref/check! start)
         [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
-        [(pair) (define loc (heap-ref/check! (+ start 1)))
-                (when (2nd-gen? loc) (traverse/roots loc))
-                (define loc (heap-ref/check! (+ start 2)))
-                (when (2nd-gen? loc) (traverse/roots loc))
+        [(pair) (define one-loc (heap-ref/check! (+ start 1)))
+                (when (2nd-gen? one-loc) (traverse/roots one-loc))
+                (define another-loc (heap-ref/check! (+ start 2)))
+                (when (2nd-gen? another-loc) (traverse/roots another-loc))
                 (make-pointers-to-2nd-gen-roots (+ start 3))]
         [(proc) (define fv-counts (heap-ref/check! (+ start 2)))
                 (for ([i (in-range fv-counts)])
@@ -426,12 +425,10 @@
 
 ;; collect-garbage : roots roots -> void
 (define (collect-garbage some-roots more-roots)
-  (change-active-semi-space)
   (forward/roots (get-root-set))
   (forward/roots some-roots)
   (forward/roots more-roots)
-  (forward/pointers (+ 1 (2nd-gen-size)))
-  (forward/ref (semi-space-start)))
+  (forward/pointers (+ 1 (2nd-gen-size))))
 
 ;; semi-space-limit -> integer 
 ;; find limit of current semi-heap
@@ -460,25 +457,26 @@
     [(list? thing)
      (for-each forward/roots thing)]
     [(root? thing)
-     (set-root! thing (forward/loc (read-root thing)))]
+     (define new-addr (forward/loc (read-root thing)))
+     (set-root! thing new-addr)
+     (forward/ref new-addr)]
     [(number? thing)
-     (forward/loc thing)]))
+     (forward/ref (forward/loc thing))]))
 
 ;; forward/loc : loc -> loc
 ;; move object to the other semi-space
 ;; and return the new addr of moved object
 (define (forward/loc loc)
   (cond
-    [(and (1st-gen? loc)
-          (not (at-to-space? loc)))
+    [(1st-gen? loc)
      (case (heap-ref/check! loc)
-       [(flat) (define new-addr (gc/alloc 2))
+       [(flat) (define new-addr (copy/alloc 2))
                (heap-set! new-addr 'flat)
                (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1))) 
                (heap-set! loc 'frwd)
                (heap-set! (+ loc 1) new-addr)
                new-addr]
-       [(pair) (define new-addr (gc/alloc 3))
+       [(pair) (define new-addr (copy/alloc 3))
                (heap-set! new-addr 'pair)
                (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
                (heap-set! (+ new-addr 2) (track/loc (heap-ref/check! (+ loc 2))))
@@ -486,7 +484,7 @@
                (heap-set! (+ loc 1) new-addr)
                new-addr]
        [(proc) (define length (+ 3 (heap-ref/check! (+ loc 2))))
-               (define new-addr (gc/alloc length))
+               (define new-addr (copy/alloc length))
                (for ([x (in-range 0 3)])
                     (heap-set! (+ new-addr x) (heap-ref/check! (+ loc x))))
                (for ([x (in-range 3 length)])
@@ -506,31 +504,41 @@
   (heap-set! 0 (+ addr n))
   addr)
 
+(define (copy/alloc n some-roots more-roots)
+  (define next (find-free-space (1st-gen-size) n))
+  (cond
+    [next next]
+    [else
+      (2nd-gen-gc some-roots more-roots)
+      (define next (find-free-space (1st-gen-size) n))
+      (unless next (error 'copy/alloc "no space"))
+      next]))
+
 ;; forward/ref : loc -> loc
 ;; move the referenced object to the other semi-space
 ;; and return the new addr of moved object
 (define (forward/ref loc)
-  (cond
-    [(= loc (heap-ref/check! 0)) (void)]
-    [else
-      (case (heap-ref/check! loc)
-        [(flat) (forward/ref (+ loc 2))]
-        [(pair) (gc:set-first! loc (forward/loc (heap-ref/check! (+ loc 1))))
-                (gc:set-rest! loc (forward/loc (heap-ref/check! (+ loc 2))))
-                (forward/ref (+ loc 3))]
-        [(proc) (define fv-count (heap-ref/check! (+ loc 2)))
-                (for ([x (in-range 0 fv-count)])
-                     (define l (+ loc 3 x))
-                     (heap-set! l (forward/loc (heap-ref/check! l))))
-                (forward/ref (+ loc 3 fv-count))]
-        [else (error 'forward/ref "wrong tag at ~a" loc)])]))
+  (case (heap-ref/check! loc)
+    [(flat) (void)]
+    [(pair) (gc:set-first! loc (forward/loc (heap-ref/check! (+ loc 1))))
+            (gc:set-rest! loc (forward/loc (heap-ref/check! (+ loc 2))))
+            (forward/ref (heap-ref (+ loc 1)))
+            (forward/ref (heap-ref (+ loc 2)))]
+    [(proc) (define fv-count (heap-ref/check! (+ loc 2)))
+            (for ([x (in-range 0 fv-count)])
+                 (define l (+ loc 3 x))
+                 (heap-set! l (forward/loc (heap-ref/check! l)))
+                 (forward/ref (heap-ref l)))]
+    [else (error 'forward/ref "wrong tag at ~a" loc)]))
 
 (define (forward/pointers loc)
   (cond
     [(= loc (heap-size)) (void)]
     [(equal? 'free (heap-ref/check! loc)) (void)]
     [else
-      (heap-set! (+ loc 1) (forward/loc (heap-ref/check! (+ loc 1))))
+      (define new-addr (forward/loc (heap-ref/check! (+ loc 1))))
+      (heap-set! (+ loc 1) new-addr)
+      (forward/ref new-addr)
       (forward/pointers (+ loc 2))]))
 
 ;; free the from space 
