@@ -54,11 +54,15 @@
           (mutator-peek-char peek-char)
           (mutator-eof-object? eof-object?)
           (mutator-make-vector make-vector)
-          (mutator-vector-length vector-legnth)
+          (mutator-vector-length vector-length)
           (mutator-vector-ref vector-ref)
           (mutator-vector-set! vector-set!)
           (mutator-modulo modulo)
           (mutator-exact-nonnegative-integer? exact-nonnegative-integer?)
+          (mutator-equal-hash-code equal-hash-code)
+          (mutator-procedure? procedure?)
+          (mutator-procedure-arity-includes? procedure-arity-includes?)
+          (mutator-file-position file-position)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -366,7 +370,7 @@
                   #`(define (#,f a)
                       (collector:struct-select struct:s a #,i))))))]))
 (begin-for-syntax
-  (define-struct define-struct-info (fields)))
+  (define-struct define-struct-info (fields) #:prefab))
 (define-syntax (mutator-define-struct stx)
   (syntax-case stx ()
     [(_ s (f ...))
@@ -579,6 +583,15 @@
 (define (mutator-exact-nonnegative-integer? i)
   (collector:alloc-flat 
     (exact-nonnegative-integer? (collector:deref i))))
+(define (mutator-equal-hash-code thing)
+  (collector:alloc-flat
+   (equal-hash-code thing)))
+(define (mutator-procedure? thing)
+  (collector:alloc-flat (procedure? thing)))
+(define (mutator-procedure-arity-includes? proc num)
+  (collector:alloc-flat (procedure-arity-includes? proc num)))
+(define (mutator-file-position port)
+  (collector:alloc-flat (file-position port)))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))

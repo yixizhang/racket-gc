@@ -4,7 +4,7 @@
 #lang plai/gc2/mutator
 
 (allocator-setup "../incr-struct.rkt" 200)
-(require xml
+(require "xml-structures.rkt"
          racket/contract)
          ;;(prefix-in racket: racket/base)) 
 
@@ -41,17 +41,17 @@
          [get-it 47])
     (begin
       (set! get-it 
-        (lambda (vs)
+        (lambda (vss)
           (cond
-            [(null? vs) (if (and (procedure? fail)
+            [(null? vss) (if (and (procedure? fail)
                                  (procedure-arity-includes? fail 0))
                           (fail)
                           fail)]
             [else
-              (let ([kv (first vs)])
+              (let ([kv (first vss)])
                 (if (equal? (kv-key kv) key)
                   (kv-value kv)
-                  (get-it (rest vs))))])))
+                  (get-it (rest vss))))])))
       (get-it vs))))
 (define (compose f g)
   (lambda (x)
@@ -63,8 +63,6 @@
      (if (eq? (first lst) value)
          lst
          (memq value (rest lst)))]))
-(define (racket:file-position x)
-  [error 'racket:file-postion])
 (define (append some-list more-list)
   (cond
     [(null? some-list) more-list]
@@ -83,27 +81,32 @@
 ;; append! : list list -> list
 (define (append! some-list more-list)
   (cond
-    [(and (null? some-lst) (list? more-list))
+    [(and (null? some-list) (list? more-list))
      more-list]
     [(and (list? some-list) (list? more-list))
      (append!-helper some-list some-list more-list)]
     [else
       (error 'append! "require list for both arguments")]))
+(define (f x)
+  (cond
+    [x 1]
+    [else 0]))
 (define (append!-helper orig-list some-list more-list)
   (cond
     [(null? (rest some-list))
-     (set-rest! some-list more-list)
-     orig-list]
+     (begin
+       (set-rest! some-list more-list)
+       orig-list)]
     [else
-      (append!-helper orig-list (rest some-list) more-list)]))
+     (append!-helper orig-list (rest some-list) more-list)]))
 
 (provide read-html-comments
          trim-whitespace
          gen-may-contain
          gen-read-sgml)
 
-(define (file-position in)
-  (make-location 0 0 (racket:file-position in)))
+(define (local-file-position in)
+  (make-location 0 0 (file-position in)))
 
 ;; Start-tag ::= (make-start-tag Location Location Symbol (listof Attribute))
 (define-struct (start-tag source) (name attrs))
@@ -152,6 +155,7 @@
 ;                   (expand-content tok rest-contents))]))])))
 
 ;; rewrite let 2nd form 
+(define null empty)
 (define (read-from-port may-contain auto-insert in)
   (let [(loop 47)]
     (begin
@@ -221,10 +225,10 @@
                                                                    (let ([element+post-hook (read-el tok (cons name context) next-tokens)])
                                                                      (let ([element (first element+post-hook)]
                                                                            [post-hook (first (rest element+post-hook))])
-                                                                       (let*-values ([(element post-element)
-                                                                                      (read-el tok (cons name context) next-tokens)]
-                                                                                     [(more-contents left-overs) (read-content post-element)])
-                                                                         (values (cons element more-contents) left-overs)))))))]
+                                                                       (let-values ([(element post-element)
+                                                                                     (read-el tok (cons name context) next-tokens)])
+                                                                         (let-values ([(more-contents left-overs) (read-content post-element)])
+                                                                           (values (cons element more-contents) left-overs))))))))]
                                                         [(end-tag? tok)
                                                          (let ([name (end-tag-name tok)])
                                                            (if (eq? name start-name)
@@ -244,7 +248,7 @@
                                             (start-tag-attrs start-tag)
                                             content)
                               remaining)))))
-          (real-el init-start-tag (cons (start-tag-name init-start-tag) init-context) init-tokens))))
+          (read-el init-start-tag (cons (start-tag-name init-start-tag) init-context) init-tokens))))
 
 ;; expand-content : Content (listof Content) -> (listof Content)
 (define (expand-content x lst)
@@ -287,7 +291,7 @@
 ;; lex-entity : Input-port -> Token
 ;; This might not return an entity if it doesn't look like one afterall.
 (define (lex-entity in)
-  (let ([start (file-position in)])
+  (let ([start (local-file-position in)])
     (read-char in)
     (case (peek-char in)
       ;; more here - read while it's numeric (or hex) not until #\;
@@ -302,18 +306,18 @@
                     (string->number str 16)]
                    [else (string->number str)])])
          (if (number? n)
-             (make-entity start (file-position in) n)
-             (make-pcdata start (file-position in) (string-append "&#" str))))]
+             (make-entity start (local-file-position in) n)
+             (make-pcdata start (local-file-position in) (string-append "&#" str))))]
       [else
        (let ([name (lex-name/case-sensitive in)]
              [c (peek-char in)])
          (if (eq? c #\;)
-             (begin (read-char in) (make-entity start (file-position in) name))
-             (make-pcdata start (file-position in) (format "&~a" name))))])))
+             (begin (read-char in) (make-entity start (local-file-position in) name))
+             (make-pcdata start (local-file-position in) (format "&~a" name))))])))
 
 ;; lex-tag-cdata-pi-comment : Input-port -> Start-tag | Element | End-tag | Pcdata | Pi | Comment
 (define (lex-tag-cdata-pi-comment in)
-  (let ([start (file-position in)])
+  (let ([start (local-file-position in)])
     (read-char in)
     (case (peek-char in)
       [(#\!)
@@ -325,24 +329,24 @@
                     [(eq? c #\-)
                      (let ([data (lex-comment-contents in)])
                        (make-comment data))]
-                    [else (make-pcdata start (file-position in) (format "<!-~a" c))]))]
+                    [else (make-pcdata start (local-file-position in) (format "<!-~a" c))]))]
          [(#\[) (read-char in)
                 (let ([s (read-string 6 in)])
                   (if (string=? s "CDATA[")
                       (let ([data (lex-cdata-contents in)])
-                        (make-pcdata start (file-position in) data))
-                      (make-pcdata start (file-position in) (format "<[~a" s))))]
+                        (make-pcdata start (local-file-position in) data))
+                      (make-pcdata start (local-file-position in) (format "<[~a" s))))]
          [else (skip-dtd in) (lex in)])]
       [(#\?) (read-char in)
              (let ([name (lex-name in)])
                (skip-space in)
                (let ([data (lex-pi-data in)])
-                 (make-p-i start (file-position in) name data)))]
+                 (make-p-i start (local-file-position in) name data)))]
       [(#\/) (read-char in)
              (let ([name (lex-name in)])
                (skip-space in)
                (read-char in) ;; skip #\> or whatever else is there
-               (make-end-tag start (file-position in) name))]
+               (make-end-tag start (local-file-position in) name))]
       [else
        (let ([name (lex-name in)]
              [attrs (lex-attributes in)])
@@ -350,8 +354,8 @@
          (case (read-char in)
            [(#\/)
             (read-char in) ;; skip #\> or something
-            (make-element start (file-position in) name attrs null)]
-           [else (make-start-tag start (file-position in) name attrs)]))])))
+            (make-element start (local-file-position in) name attrs null)]
+           [else (make-start-tag start (local-file-position in) name attrs)]))])))
 
 
 ;; lex-attributes : Input-port -> (listof Attribute)
@@ -368,7 +372,7 @@
 ;; lex-attribute : Input-port -> Attribute
 ;; Note: entities in attributes are ignored, since defacto html uses & in them for URL syntax
 (define (lex-attribute in)
-  (let ([start (file-position in)]
+  (let ([start (local-file-position in)]
         [name (lex-name in)])
     (skip-space in)
     (cond
@@ -385,8 +389,8 @@
                                [(or (eq? c delimiter) (eof-object? c)) null]
                                [else (cons c (read-more))])))]
                         [else (cons delimiter (read-up-to (lambda (c) (or (char-whitespace? c) (eq? c #\>))) in))]))])
-         (make-attribute start (file-position in) name value))]
-      [else (make-attribute start (file-position in) name (symbol->string name))])))
+         (make-attribute start (local-file-position in) name value))]
+      [else (make-attribute start (local-file-position in) name (symbol->string name))])))
 
 ;; skip-space : Input-port -> Void
 ;; deviation - should sometimes insist on at least one space
@@ -400,7 +404,7 @@
 ;; lex-pcdata : Input-port -> Pcdata
 ;; deviation - disallow ]]> "for compatability" with SGML, sec 2.4 XML spec 
 (define (lex-pcdata in)
-  (let ([start (file-position in)])
+  (let ([start (local-file-position in)])
     ;; The following regexp match must use bytes, not chars, because
     ;; `in' might not be a well-formed UTF-8 sequence. If it isn't,
     ;; and it goes wrong with the first byte sequence, then a char-based
@@ -408,7 +412,7 @@
     ;; expects characters to be read.
     (let ([s (regexp-match #rx#"^[^&<]*" in)])
       (make-pcdata start
-                   (file-position in)
+                   (local-file-position in)
                    (bytes->string/utf-8
                     (if (trim-whitespace)
                         (regexp-replace* #rx#"[ \t\v\r\n]+" (car s) #"")
@@ -417,7 +421,7 @@
 #|
       ;; Original slow version:
       (define (lex-pcdata in)
-	(let ([start (file-position in)]
+	(let ([start (local-file-position in)]
 	      [data (let loop ([c (read-char in)])
 		      (let ([next (peek-char in)])
 			(cond
@@ -431,7 +435,7 @@
 			     [else (cons c lst)]))]
 			 [else (cons c (loop (read-char in)))])))])
 	  (make-pcdata start
-		       (file-position in)
+		       (local-file-position in)
 		       (list->string data))))
   |#
 
