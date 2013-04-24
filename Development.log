@@ -1,9 +1,9 @@
 week 04-08-13
 ===
-add modulo, etc., to mutator
-try depth-first for copying traverse/ref
 maybe double vector size when all slots are filled (check paper/algo/wiki)
 ===
+add modulo, etc., to mutator
+try depth-first for copying traverse/ref
 add void to mutator
 support of vector/struct/struct-instance for gc->scheme/member?/equal?, etc.
 update mutator so it supports *values*

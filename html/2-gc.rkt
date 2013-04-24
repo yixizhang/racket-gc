@@ -8,3 +8,5 @@
 b
 
 a
+(define-struct (s t) (text))
+make-t

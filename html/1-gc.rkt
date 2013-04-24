@@ -5,4 +5,4 @@
 (provide (all-defined-out))
 
 (define a 1)
-17
+(define-struct t (string))
