@@ -296,18 +296,19 @@
     (case (peek-char in)
       ;; more here - read while it's numeric (or hex) not until #\;
       [(#\#)
-       (read-char in)
-       (let* ([hex? (if (equal? #\x (peek-char in))
-                        (and (read-char in) #t)
-                        #f)]
-              [str (read-until #\; in)]
-              [n (cond
-                   [hex?
-                    (string->number str 16)]
-                   [else (string->number str)])])
-         (if (number? n)
-             (make-entity start (local-file-position in) n)
-             (make-pcdata start (local-file-position in) (string-append "&#" str))))]
+       (begin
+         (read-char in)
+         (let* ([hex? (if (equal? #\x (peek-char in))
+                          (and (read-char in) #t)
+                          #f)]
+                [str (read-until #\; in)]
+                [n (cond
+                     [hex?
+                      (string->number str 16)]
+                     [else (string->number str)])])
+           (if (number? n)
+               (make-entity start (local-file-position in) n)
+               (make-pcdata start (local-file-position in) (string-append "&#" str)))))]
       [else
        (let ([name (lex-name/case-sensitive in)]
              [c (peek-char in)])
@@ -321,41 +322,47 @@
     (read-char in)
     (case (peek-char in)
       [(#\!)
-       (read-char in)
-       (case (peek-char in)
-         [(#\-) (read-char in)
-                (let ([c (read-char in)])
-                  (cond
-                    [(eq? c #\-)
-                     (let ([data (lex-comment-contents in)])
-                       (make-comment data))]
-                    [else (make-pcdata start (local-file-position in) (format "<!-~a" c))]))]
-         [(#\[) (read-char in)
-                (let ([s (read-string 6 in)])
-                  (if (string=? s "CDATA[")
-                      (let ([data (lex-cdata-contents in)])
-                        (make-pcdata start (local-file-position in) data))
-                      (make-pcdata start (local-file-position in) (format "<[~a" s))))]
-         [else (skip-dtd in) (lex in)])]
-      [(#\?) (read-char in)
-             (let ([name (lex-name in)])
-               (skip-space in)
-               (let ([data (lex-pi-data in)])
-                 (make-p-i start (local-file-position in) name data)))]
-      [(#\/) (read-char in)
-             (let ([name (lex-name in)])
-               (skip-space in)
-               (read-char in) ;; skip #\> or whatever else is there
-               (make-end-tag start (local-file-position in) name))]
+       (begin
+         (read-char in)
+         (case (peek-char in)
+           [(#\-) (begin
+                    (read-char in)
+                    (let ([c (read-char in)])
+                      (cond
+                        [(eq? c #\-)
+                         (let ([data (lex-comment-contents in)])
+                           (make-comment data))]
+                        [else (make-pcdata start (local-file-position in) (format "<!-~a" c))])))]
+           [(#\[) (begin
+                    (read-char in)
+                    (let ([s (read-string 6 in)])
+                      (if (string=? s "CDATA[")
+                          (let ([data (lex-cdata-contents in)])
+                            (make-pcdata start (local-file-position in) data))
+                          (make-pcdata start (local-file-position in) (format "<[~a" s)))))]
+           [else (skip-dtd in) (lex in)]))]
+      [(#\?) (begin
+               (read-char in)
+               (let ([name (lex-name in)])
+                 (skip-space in)
+                 (let ([data (lex-pi-data in)])
+                   (make-p-i start (local-file-position in) name data))))]
+      [(#\/) (begin
+               (read-char in)
+               (let ([name (lex-name in)])
+                 (skip-space in)
+                 (read-char in) ;; skip #\> or whatever else is there
+                 (make-end-tag start (local-file-position in) name)))]
       [else
        (let ([name (lex-name in)]
              [attrs (lex-attributes in)])
-         (skip-space in)
-         (case (read-char in)
-           [(#\/)
-            (read-char in) ;; skip #\> or something
-            (make-element start (local-file-position in) name attrs null)]
-           [else (make-start-tag start (local-file-position in) name attrs)]))])))
+         (begin
+           (skip-space in)
+           (case (read-char in)
+             [(#\/)
+              (read-char in) ;; skip #\> or something
+              (make-element start (local-file-position in) name attrs null)]
+             [else (make-start-tag start (local-file-position in) name attrs)])))])))
 
 
 ;; lex-attributes : Input-port -> (listof Attribute)

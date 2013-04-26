@@ -63,6 +63,9 @@
           (mutator-procedure? procedure?)
           (mutator-procedure-arity-includes? procedure-arity-includes?)
           (mutator-file-position file-position)
+          (mutator-string->number string->number)
+          (mutator-string-append string-append)
+          (mutator-format format)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -592,6 +595,17 @@
   (collector:alloc-flat (procedure-arity-includes? proc num)))
 (define (mutator-file-position port)
   (collector:alloc-flat (file-position port)))
+(define (mutator-string->number thing)
+  (collector:alloc-flat (string->number thing)))
+(define (mutator-string-append some-str more-str)
+  (collector:alloc-flat (string-append some-str more-str)))
+(define-syntax (mutator-format stx)
+  (syntax-case stx ()
+    [(_ form v ...)
+     #`(collector:alloc-flat
+         (format (mutator-app gc->scheme form)
+                 #,@(for/list ([v-v (in-list (syntax->list #`(v ...)))])
+                              #`(mutator-app gc->scheme #,v-v))))]))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))
