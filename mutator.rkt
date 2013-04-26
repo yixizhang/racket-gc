@@ -593,9 +593,9 @@
   (collector:alloc-flat
    (equal-hash-code (collector:deref thing))))
 (define (mutator-procedure? thing)
-  (collector:alloc-flat (procedure? thing)))
+  (collector:alloc-flat (procedure? (deref-proc thing))))
 (define (mutator-procedure-arity-includes? proc num)
-  (collector:alloc-flat (procedure-arity-includes? proc num)))
+  (collector:alloc-flat (procedure-arity-includes? (deref-proc proc)  num)))
 (define (mutator-file-position port)
   (collector:alloc-flat (file-position (collector:deref port))))
 (define (mutator-string->number thing)

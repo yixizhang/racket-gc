@@ -16,3 +16,5 @@
 (f 1)
 
 (format "~a" 1)
+
+(procedure? (lambda (x) x))
