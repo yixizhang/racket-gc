@@ -368,46 +368,62 @@
 
 ;; lex-attributes : Input-port -> (listof Attribute)
 (define (lex-attributes in)
-  (sort (let loop ()
-          (skip-space in)
-          (cond [(name-start? (peek-char in))
-                 (cons (lex-attribute in) (loop))]
-                [else null]))
+  (sort (let ([loop 47])
+          (begin
+            (set! loop
+                  (begin
+                    (lambda ()
+                      (skip-space in)
+                      (cond [(name-start? (peek-char in))
+                             (cons (lex-attribute in) (loop))]
+                            [else null]))))
+            (loop)))
         (lambda (a b)
           (string<? (symbol->string (attribute-name a))
                     (symbol->string (attribute-name b))))))
 
 ;; lex-attribute : Input-port -> Attribute
 ;; Note: entities in attributes are ignored, since defacto html uses & in them for URL syntax
+(define (char-whitespace? c)
+  (equal? c #\ ))
 (define (lex-attribute in)
   (let ([start (local-file-position in)]
         [name (lex-name in)])
     (skip-space in)
     (cond
       [(eq? (peek-char in) #\=)
-       (read-char in)
-       (skip-space in)
-       (let* ([delimiter (read-char in)]
-              [value (list->string
-                      (case delimiter
-                        [(#\' #\")
-                         (let read-more ()
-                           (let ([c (read-char in)])
-                             (cond
-                               [(or (eq? c delimiter) (eof-object? c)) null]
-                               [else (cons c (read-more))])))]
-                        [else (cons delimiter (read-up-to (lambda (c) (or (char-whitespace? c) (eq? c #\>))) in))]))])
-         (make-attribute start (local-file-position in) name value))]
+       (begin
+         (read-char in)
+         (skip-space in)
+         (let* ([delimiter (read-char in)]
+                [value (list->string
+                        (case delimiter
+                          [(#\' #\")
+                           (let ([read-more 47])
+                             (begin
+                               (set! read-more
+                                     (lambda ()
+                                       (let ([c (read-char in)])
+                                         (cond
+                                           [(or (eq? c delimiter) (eof-object? c)) null]
+                                           [else (cons c (read-more))]))))
+                               (read-more)))]
+                          [else (cons delimiter (read-up-to (lambda (c) (or (char-whitespace? c) (eq? c #\>))) in))]))])
+           (make-attribute start (local-file-position in) name value)))]
       [else (make-attribute start (local-file-position in) name (symbol->string name))])))
 
 ;; skip-space : Input-port -> Void
 ;; deviation - should sometimes insist on at least one space
 (define (skip-space in)
-  (let loop ()
-    (let ([c (peek-char in)])
-      (when (and (not (eof-object? c)) (char-whitespace? c))
-        (read-char in)
-        (loop)))))
+  (let ([loop 47])
+    (begin
+      (set! loop
+            (lambda ()
+              (let ([c (peek-char in)])
+                (when (and (not (eof-object? c)) (char-whitespace? c))
+                  (read-char in)
+                  (loop)))))
+      (loop))))
 
 ;; lex-pcdata : Input-port -> Pcdata
 ;; deviation - disallow ]]> "for compatability" with SGML, sec 2.4 XML spec 

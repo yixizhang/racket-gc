@@ -69,6 +69,9 @@
           (mutator-read-string read-string)
           (mutator-string=? string=?)
           (mutator-sort sort)
+          (mutator-string<? string<?)
+          (mutator-symbol->string symbol->string)
+          (mutator-list->string list->string)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -616,23 +619,27 @@
 (define (mutator-string=? a b)
   (collector:alloc-flat (string=? (collector:deref a)
                                   (collector:deref b))))
-(define (mutator-string<? string<? a b)
+(define (mutator-string<? a b)
   (collector:alloc-flat (string<? (collector:deref a)
                                   (collector:deref b))))
 (define (mutator-symbol->string thing)
   (collector:alloc-flat (symbol->string (collector:deref thing))))
+;; mutator-list->string : loc -> string
+(define (mutator-list->string loc)
+  (collector:alloc-flat
+    (list->string (gc->scheme loc))))
 
-;; mutator-copy-list : (listof loc) -> loc
-(define (mutator-copy-list some-list)
+;; list->loc : (listof loc) -> loc
+(define (list->loc some-list)
   (cond
     [(null? some-list) 
      (collector:alloc-flat '())]
     [else 
       (collector:cons (car some-list)
-                      (mutator-copy-list (cdr some-list)))]))
+                      (list->loc (cdr some-list)))]))
 (define (mutator-sort lst less-than?)
   (let ([sorted (sort lst (compose less-than? gc->scheme))])
-    (mutator-copy-list sorted)))
+    (list->loc sorted)))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))
