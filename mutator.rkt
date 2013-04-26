@@ -629,17 +629,26 @@
   (collector:alloc-flat
     (list->string (gc->scheme loc))))
 
-;; list->loc : (listof loc) -> loc
-(define (list->loc some-list)
+;; loc/list->cons/loc : (listof loc) -> loc
+(define (loc/list->cons/loc some-list)
   (cond
     [(null? some-list) 
      (collector:alloc-flat '())]
     [else 
       (collector:cons (car some-list)
-                      (list->loc (cdr some-list)))]))
+                      (loc/list->cons/loc (cdr some-list)))]))
+;; cons/loc->loc/list : loc -> (listof loc)
+(define (cons/loc->loc/list loc)
+  (cond
+    [(null? (collector:deref (collector:rest loc)))
+     (cons (collector:first loc) '())]
+    [else
+      (cons (collector:first (cons/loc->loc/list (collector:rest loc))))]))
+;; mutator-sort : loc loc -> loc
 (define (mutator-sort lst less-than?)
-  (let ([sorted (sort lst (compose less-than? gc->scheme))])
-    (list->loc sorted)))
+  (let ([sorted (sort (cons/loc->loc/list lst) 
+                      (compose (deref-proc less-than?) gc->scheme))])
+    (loc/list->cons/loc sorted)))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))

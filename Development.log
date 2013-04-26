@@ -1,5 +1,6 @@
 week 04-08-13
 ===
+fix incremental gc's heap-check
 maybe double vector size when all slots are filled (check paper/algo/wiki)
 ===
 add modulo, etc., to mutator
