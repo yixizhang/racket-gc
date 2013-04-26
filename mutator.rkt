@@ -66,6 +66,9 @@
           (mutator-string->number string->number)
           (mutator-string-append string-append)
           (mutator-format format)
+          (mutator-read-string read-string)
+          (mutator-string=? string=?)
+          (mutator-sort sort)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -575,10 +578,10 @@
    (read-char (collector:deref port))))
 (define (mutator-peek-char port)
   (collector:alloc-flat
-   (peek-char port)))
+   (peek-char (collector:deref port))))
 (define (mutator-eof-object? thing)
   (collector:alloc-flat
-   (eof-object? thing)))
+   (eof-object? (collector:deref thing))))
 (define (mutator-modulo x y)
   (collector:alloc-flat
     (modulo (collector:deref x)
@@ -588,17 +591,18 @@
     (exact-nonnegative-integer? (collector:deref i))))
 (define (mutator-equal-hash-code thing)
   (collector:alloc-flat
-   (equal-hash-code thing)))
+   (equal-hash-code (collector:deref thing))))
 (define (mutator-procedure? thing)
   (collector:alloc-flat (procedure? thing)))
 (define (mutator-procedure-arity-includes? proc num)
   (collector:alloc-flat (procedure-arity-includes? proc num)))
 (define (mutator-file-position port)
-  (collector:alloc-flat (file-position port)))
+  (collector:alloc-flat (file-position (collector:deref port))))
 (define (mutator-string->number thing)
-  (collector:alloc-flat (string->number thing)))
-(define (mutator-string-append some-str more-str)
-  (collector:alloc-flat (string-append some-str more-str)))
+  (collector:alloc-flat (string->number (collector:deref thing))))
+(define (mutator-string-append a b)
+  (collector:alloc-flat (string-append (collector:deref a)
+                                       (collector:deref b))))
 (define-syntax (mutator-format stx)
   (syntax-case stx ()
     [(_ form v ...)
@@ -606,6 +610,29 @@
          (format (mutator-app gc->scheme form)
                  #,@(for/list ([v-v (in-list (syntax->list #`(v ...)))])
                               #`(mutator-app gc->scheme #,v-v))))]))
+(define (mutator-read-string amt in)
+  (collector:alloc-flat (read-string (collector:deref amt)
+                                     (collector:deref in))))
+(define (mutator-string=? a b)
+  (collector:alloc-flat (string=? (collector:deref a)
+                                  (collector:deref b))))
+(define (mutator-string<? string<? a b)
+  (collector:alloc-flat (string<? (collector:deref a)
+                                  (collector:deref b))))
+(define (mutator-symbol->string thing)
+  (collector:alloc-flat (symbol->string (collector:deref thing))))
+
+;; mutator-copy-list : (listof loc) -> loc
+(define (mutator-copy-list some-list)
+  (cond
+    [(null? some-list) 
+     (collector:alloc-flat '())]
+    [else 
+      (collector:cons (car some-list)
+                      (mutator-copy-list (cdr some-list)))]))
+(define (mutator-sort lst less-than?)
+  (let ([sorted (sort lst (compose less-than? gc->scheme))])
+    (mutator-copy-list sorted)))
 
 (define (mutator-make-vector length loc)
   (collector:vector length loc))

@@ -360,8 +360,9 @@
            (skip-space in)
            (case (read-char in)
              [(#\/)
-              (read-char in) ;; skip #\> or something
-              (make-element start (local-file-position in) name attrs null)]
+              (begin
+                (read-char in) ;; skip #\> or something
+                (make-element start (local-file-position in) name attrs null))]
              [else (make-start-tag start (local-file-position in) name attrs)])))])))
 
 
