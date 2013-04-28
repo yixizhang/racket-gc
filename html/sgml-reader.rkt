@@ -490,22 +490,26 @@
 
 ;; skip-dtd : Input-port -> Void
 (define (skip-dtd in)
-  (let skip ()
-    (let ([c (read-char in)])
-      (if (eof-object? c)
-          (void)
-          (case c
-            [(#\') (read-until #\' in) (skip)]
-            [(#\") (read-until #\" in) (skip)]
-            [(#\<)
-             (case (read-char in)
-               [(#\!) (case (read-char in)
-                        [(#\-) (read-char in) (lex-comment-contents in) (skip)]
-                        [else (skip) (skip)])]
-               [(#\?) (lex-pi-data in) (skip)]
-               [else (skip) (skip)])]
-            [(#\>) (void)]
-            [else (skip)])))))
+  (let ([skip 47])
+    (begin
+      (set! skip
+            (lambda ()
+              (let ([c (read-char in)])
+                (if (eof-object? c)
+                    (void)
+                    (case c
+                      [(#\') (begin (read-until #\' in) (skip))]
+                      [(#\") (begin (read-until #\" in) (skip))]
+                      [(#\<)
+                       (case (read-char in)
+                         [(#\!) (case (read-char in)
+                                  [(#\-) (begin (read-char in) (lex-comment-contents in) (skip))]
+                                  [else (begin (skip) (skip))])]
+                         [(#\?) (begin (lex-pi-data in) (skip))]
+                         [else (begin (skip) (skip))])]
+                      [(#\>) (void)]
+                      [else (skip)])))))
+      (skip))))
 
 ;; name-start? : TST -> Bool
 (define (name-start? ch)
@@ -529,21 +533,29 @@
 ;; read-up-to : (Char -> Bool) Input-port -> (listof Char)
 ;; abstract this with read-until
 (define (read-up-to p? in)
-  (let loop ()
-    (let ([c (peek-char in)])
-      (cond
-        [(or (eof-object? c) (p? c)) null]
-        [else (cons (read-char in) (loop))]))))
+  (let ([loop 47])
+    (begin
+      (set! loop
+            (lambda ()
+              (let ([c (peek-char in)])
+                (cond
+                  [(or (eof-object? c) (p? c)) null]
+                  [else (cons (read-char in) (loop))]))))
+      (loop))))
 
 ;; read-until : Char Input-port -> String
 ;; discards the stop character, too
 (define (read-until char in)
   (list->string
-   (let read-more ()
-     (let ([c (read-char in)])
-       (cond
-         [(or (eof-object? c) (eq? c char)) null]
-         [else (cons c (read-more))])))))
+   (let ([read-more 47])
+     (begin
+       (set! read-more
+             (lambda ()
+               (let ([c (read-char in)])
+                 (cond
+                   [(or (eof-object? c) (eq? c char)) null]
+                   [else (cons c (read-more))]))))
+       (read-more)))))
 
 ;; gen-read-until-string : String -> Input-port -> String
 ;; uses Knuth-Morris-Pratt from
@@ -554,19 +566,27 @@
          [prefix (make-vector len 0)]
          [fall-back
           (lambda (k c)
-            (let ([k (let loop ([k k])
-                       (cond
-                         [(and (> k 0) (not (eq? (string-ref stop k) c)))
-                          (loop (vector-ref prefix (sub1 k)))]
-                         [else k]))])
+            (let ([k (let ([loop 47])
+                       (begin
+                         (set! loop
+                               (lambda (kv)
+                                 (cond
+                                   [(and (> kv 0) (not (eq? (string-ref stop kv) c)))
+                                    (loop (vector-ref prefix (sub1 kv)))]
+                                   [else kv])))
+                         (loop k)))])
               (if (eq? (string-ref stop k) c)
                   (add1 k)
                   k)))])
-    (let init ([k 0] [q 1])
-      (when (< q len)
-        (let ([k (fall-back k (string-ref stop q))])
-          (vector-set! prefix q k)
-          (init k (add1 q)))))
+    (let ([init 47])
+      (begin
+        (set! init
+              (lambda (kv qv)
+                (when (< qv len)
+                  (let ([k (fall-back kv (string-ref stop qv))])
+                    (vector-set! prefix qv kv)
+                    (init kv (add1 qv))))))
+        (init 0 1)))
     ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop
     (lambda (in)
       (list->string

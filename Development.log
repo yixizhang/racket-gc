@@ -1,6 +1,8 @@
 week 04-08-13
 ===
 fix incremental gc's heap-check
+update mutator-cond macro to support (begin e ...) for each branch
+add 2nd form of let to mutator macros
 maybe double vector size when all slots are filled (check paper/algo/wiki)
 ===
 add modulo, etc., to mutator

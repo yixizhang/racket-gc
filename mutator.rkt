@@ -63,6 +63,7 @@
           (mutator-procedure? procedure?)
           (mutator-procedure-arity-includes? procedure-arity-includes?)
           (mutator-file-position file-position)
+
           (mutator-string->number string->number)
           (mutator-string-append string-append)
           (mutator-format format)
@@ -73,11 +74,18 @@
           (mutator-symbol->string symbol->string)
           (mutator-string->symbol string->symbol)
           (mutator-list->string list->string)
+          (mutator-string-downcase string-downcase)
+          (mutator-string-length string-length)
+          (mutator-string-ref string-ref)
 
           (mutator-regexp-match regexp-match)
           (mutator-regexp-replace* regexp-replace*)
           (mutator-regexp-match-positions regexp-match-positions)
           (mutator-bytes->string/utf-8 bytes->string/utf-8)
+
+          (mutator-char? char?)
+          (mutator-char-alphabetic? char-alphabetic?)
+          (mutator-char-numeric? char-numeric?)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -607,6 +615,8 @@
   (collector:alloc-flat (procedure-arity-includes? (deref-proc proc)  num)))
 (define (mutator-file-position port)
   (collector:alloc-flat (file-position (collector:deref port))))
+
+;; string related
 (define (mutator-string->number thing)
   (collector:alloc-flat (string->number (collector:deref thing))))
 (define (mutator-string-append a b)
@@ -636,6 +646,13 @@
 (define (mutator-list->string loc)
   (collector:alloc-flat
     (list->string (gc->scheme loc))))
+(define (mutator-string-downcase s)
+  (collector:alloc-flat (string-downcase (collector:deref s))))
+(define (mutator-string-length thing)
+  (collector:alloc-flat (string-length (collector:deref thing))))
+(define (mutator-string-ref str k)
+  (collector:alloc-flat (string-ref (collector:deref str)
+                                    (collector:deref k))))
 
 ;; regexp related
 (define (mutator-regexp-match pattern input)
@@ -653,6 +670,14 @@
                           #f)))
 (define (mutator-bytes->string/utf-8 thing)
   (collector:alloc-flat (bytes->string/utf-8 (collector:deref thing))))
+
+;; char related
+(define (mutator-char? thing)
+  (collector:alloc-flat (char? (collector:deref thing))))
+(define (mutator-char-alphabetic? thing)
+  (collector:alloc-flat (char-alphabetic? (collector:deref thing))))
+(define (mutator-char-numeric? thing)
+  (collector:alloc-flat (char-numeric? (collector:deref thing))))
 
 ;; loc/list->cons/loc : (listof loc) -> loc
 (define (loc/list->cons/loc some-list)
