@@ -71,7 +71,13 @@
           (mutator-sort sort)
           (mutator-string<? string<?)
           (mutator-symbol->string symbol->string)
+          (mutator-string->symbol string->symbol)
           (mutator-list->string list->string)
+
+          (mutator-regexp-match regexp-match)
+          (mutator-regexp-replace* regexp-replace*)
+          (mutator-regexp-match-positions regexp-match-positions)
+          (mutator-bytes->string/utf-8 bytes->string/utf-8)
           ))
 
 (define-syntax-parameter mutator-name #f)
@@ -624,10 +630,29 @@
                                   (collector:deref b))))
 (define (mutator-symbol->string thing)
   (collector:alloc-flat (symbol->string (collector:deref thing))))
+(define (mutator-string->symbol thing)
+  (collector:alloc-flat (string->symbol (collector:deref thing))))
 ;; mutator-list->string : loc -> string
 (define (mutator-list->string loc)
   (collector:alloc-flat
     (list->string (gc->scheme loc))))
+
+;; regexp related
+(define (mutator-regexp-match pattern input)
+  (collector:alloc-flat (regexp-match (collector:deref pattern)
+                                      (collector:deref input))))
+(define (mutator-regexp-replace* pattern input insert)
+  (collector:alloc-flat (regexp-replace* (collector:deref pattern)
+                                         (collector:deref input)
+                                         (collector:deref insert))))
+;; mutator-regexp-match-positions : byte-regexp?(loc) bytes?/string?(loc) -> boolean?(loc)
+(define (mutator-regexp-match-positions pattern input)
+  (collector:alloc-flat (if (regexp-match-positions (collector:deref pattern)
+                                                    (collector:deref input))
+                          #t
+                          #f)))
+(define (mutator-bytes->string/utf-8 thing)
+  (collector:alloc-flat (bytes->string/utf-8 (collector:deref thing))))
 
 ;; loc/list->cons/loc : (listof loc) -> loc
 (define (loc/list->cons/loc some-list)

@@ -439,8 +439,8 @@
                    (local-file-position in)
                    (bytes->string/utf-8
                     (if (trim-whitespace)
-                        (regexp-replace* #rx#"[ \t\v\r\n]+" (car s) #"")
-                        (car s))
+                        (regexp-replace* #rx#"[ \t\v\r\n]+" (first s) #"")
+                        (first s))
                     #\?)))))
 #|
       ;; Original slow version:
@@ -466,7 +466,7 @@
 
 ;; lex-name : Input-port -> Symbol
 (define (lex-name in)
-  (let ([s (bytes->string/utf-8 (car (regexp-match #rx"^[a-zA-Z_:0-9&.-]*" in)))])
+  (let ([s (bytes->string/utf-8 (first (regexp-match #rx"^[a-zA-Z_:0-9&.-]*" in)))])
     (string->symbol
      ;; Common case: string is already lowercased
      (if (regexp-match-positions #rx"[A-Z]" s)
@@ -474,7 +474,7 @@
          s))))
 ;; lex-name/case-sensitive : Input-port -> Symbol
 (define (lex-name/case-sensitive in)
-  (let ([s (bytes->string/utf-8 (car (regexp-match #rx"^[a-zA-Z_:0-9&.-]*" in)))])
+  (let ([s (bytes->string/utf-8 (first (regexp-match #rx"^[a-zA-Z_:0-9&.-]*" in)))])
     (string->symbol s)))
 #|
       (define (lex-name in)

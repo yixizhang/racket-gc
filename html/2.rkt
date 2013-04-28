@@ -20,3 +20,4 @@ a
 (mutator-format "~a" 1)
 (char-whitespace? #\ )
 (format "~s" 100)
+(byte-regexp? #rx#"^[^&<]*")
