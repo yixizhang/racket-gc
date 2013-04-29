@@ -39,8 +39,28 @@ a
 (search char? '(1 2 3))
 
 (define return #f)
-(+ 1 (call/cc
-     (lambda (cont)
+(+ 1 (let/cc cont
        (set! return cont)
-         1)))
+       1))
 (return 22)
+
+(let/ec out
+  (let loop ([matched 0] [out out] [in '(1 #\a #\b 2)])
+    (let* ([matched (add1 matched)])
+      (cond
+        [(null? in) (out null)]
+        [else 
+         (let ([c (car in)])
+           (printf "~s " matched)
+           (printf "~s\n" c)
+           (cons c (loop matched out (cdr in))))]))))
+
+(let loop ([matched 0] [in '(1 #\a #\b 2)])
+  (let* ([matched (add1 matched)])
+    (cond
+      [(null? in) null]
+      [else 
+       (let ([c (car in)])
+         (printf "~s " matched)
+         (printf "~s\n" c)
+         (cons c (loop matched (cdr in))))])))
