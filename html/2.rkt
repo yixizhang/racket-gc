@@ -21,3 +21,26 @@ a
 (char-whitespace? #\ )
 (format "~s" 100)
 (byte-regexp? #rx#"^[^&<]*")
+
+;; call/cc
+(define (search wanted? lst)
+  (call/cc 
+   ;; call/ec : proc -> any
+   ;; like call/cc, but proc isn't called in the tail position,
+   ;; and the continuation procedure supplied to proc can only be
+   ;; called during the dynamic extend of the call/ec call.
+   (lambda (return)
+     (for-each (lambda (x)
+                 (when (wanted? x)
+                   (return x)))
+               lst)
+     #f)))
+(search char? '(1 #\a 2))
+(search char? '(1 2 3))
+
+(define return #f)
+(+ 1 (call/cc
+     (lambda (cont)
+       (set! return cont)
+         1)))
+(return 22)

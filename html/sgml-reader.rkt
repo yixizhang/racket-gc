@@ -587,7 +587,26 @@
                     (vector-set! prefix qv kv)
                     (init kv (add1 qv))))))
         (init 0 1)))
-    ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop
+    ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop   
+    
+#|
+;; rewrite in call/ec
+    (lambda (in)
+      (list->string
+       (call/ec (lambda (out)
+                  (let ([loop 47])
+                    (begin
+                      (set! loop
+                            (lambda (matched outv)
+                              (let* ([c (read-char in)]
+                                     [matched (fall-back matched c)])
+                                (cond
+                                  [(or (eof-object? c) (= matched len)) (outv null)]
+                                  [(zero? matched) (cons c (call/ec (lambda (local-out)
+                                                                      (loop matched local-out))))]
+                                  [else (cons c (loop matched outv))]))))
+                      (loop 0 out)))))))
+|#
     (lambda (in)
       (list->string
        (let/ec out
