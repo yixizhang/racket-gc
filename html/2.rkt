@@ -3,12 +3,8 @@
 a
 (define (f c)
   (cond
-    [c
-     1
-     2]
-    [else
-     3
-     4]))
+    [c 1 2]
+    [else 3 4]))
 
 (define-syntax (mutator-format stx)
   (syntax-case stx ()
@@ -109,3 +105,48 @@ a
       [(eq? node 'done) '()]
       [else (print node)
             (restart)])))
+
+;; continuation-passing macros
+(define *cont* identity)
+(define-syntax-rule (=lambda (parm ...) body ...)
+  (lambda (*cont* parm ...) body ...))
+(define-syntax (=define stx)
+  (syntax-case stx ()
+    [(_ (name parm ...) body ...)
+     (with-syntax ([f (datum->syntax #'name (string->symbol 
+                                             (format "=~a" (syntax-e #'name))))]
+                   [(arg ...) (generate-temporaries #'(parm ...))])
+       #`(begin
+           (define-syntax-rule (name arg ...)
+             (f *cont* arg ...))
+           (define (f *cont* parm ...) body ...)))]))
+(define-syntax-rule (=let-values ([(parm ...) (e ...)]) body ...)
+  (let ([*cont* (lambda (parm ...) body ...)]) e ...))
+(define-syntax-rule (=values val ...)
+  (*cont* val ...))
+(define-syntax-rule (=apply fn arg ...)
+  (apply fn *cont* arg ...))
+;; replace call/cc with cps
+(set! *saved* null)
+(=define (dft-node1 tree)
+         (cond
+           [(null? tree) (restart1)]
+           [(not (pair? tree)) (=values tree)]
+           [else (set! *saved*
+                       (cons (lambda () (dft-node1 (cdr tree)))
+                             *saved*))
+                 (dft-node1 (car tree))]))
+(=define (restart1)
+         (cond
+           [(null? *saved*) (=values 'done)]
+           [else (let ([next (car *saved*)])
+                   (begin
+                     (set! *saved* (cdr *saved*))
+                     (next)))]))
+(=define (dft3 tree)
+         (set! *saved* null)
+         (=let-values ([(node) ((dft-node1 tree))])
+                      (cond
+                        [(eq? node 'done) (=values null)]
+                        [else (print node)
+                              (restart1)])))
