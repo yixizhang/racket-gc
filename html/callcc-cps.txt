@@ -1,0 +1,7 @@
+call/cc -> (lambda (f cc) (f (lambda (x k) (cc x)) cc))
+;; x is the value you'd return?
+;; k is the continuation when x is called on, discarded
+;; cc is the saved current continuation
+;; cps -> (c x) -> go back to saved continuation with the value you'd return
+;; f is the proc argument in (call/cc (lambda (proc) ... )),
+;; so that when calling (f (lambda (x k) (cc x) ...)) it will actually go into cc.

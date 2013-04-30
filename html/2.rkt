@@ -29,10 +29,10 @@ a
    ;; like call/cc, but proc isn't called in the tail position,
    ;; and the continuation procedure supplied to proc can only be
    ;; called during the dynamic extend of the call/ec call.
-   (lambda (return)
+   (lambda (cc)
      (for-each (lambda (x)
                  (when (wanted? x)
-                   (return x)))
+                   (cc x)))
                lst)
      #f)))
 (search char? '(1 #\a 2))
@@ -45,22 +45,67 @@ a
 (return 22)
 
 (let/ec out
-  (let loop ([matched 0] [out out] [in '(1 #\a #\b 2)])
-    (let* ([matched (add1 matched)])
-      (cond
-        [(null? in) (out null)]
-        [else 
-         (let ([c (car in)])
-           (printf "~s " matched)
-           (printf "~s\n" c)
-           (cons c (loop matched out (cdr in))))]))))
-
-(let loop ([matched 0] [in '(1 #\a #\b 2)])
-  (let* ([matched (add1 matched)])
+  (let loop ([matched 0] [out out] [in '(#\  #\a #\b)])
     (cond
-      [(null? in) null]
+      [(null? in) (out null)]
+      [(zero? matched) (cons (car in) (let/ec out (loop matched out (cdr in))))]
       [else 
        (let ([c (car in)])
          (printf "~s " matched)
          (printf "~s\n" c)
-         (cons c (loop matched (cdr in))))])))
+         (cons c (loop (add1 matched) out (cdr in))))])))
+
+;; onlisp about continuation
+(define frozen 'FRONZEN)
+(append '(the call/cc returned)
+        (list (call/cc
+               (lambda (cc)
+                 (set! frozen cc)
+                 'a))))
+(+ 1 (frozen 'again))
+;; another one
+(define froz1 1)
+(define froz2 2)
+(let ((x 0))
+  (call/cc
+   (λ (cc)
+     (set! froz1 cc)
+     (set! froz2 cc)))
+  (set! x (add1 x))
+  x)
+(froz1 '())
+(froz2)
+;; dft
+(define t1 '(a (b (d h)) (c e (f i) g)))
+(define t2 '(1 (2 (3 6 7) 4 5)))
+(define (dft tree)
+  (cond
+    [(null? tree) '()]
+    [(not (pair? tree)) (print tree)]
+    [else (dft (car tree))
+          (dft (cdr tree))]))
+(define *saved* '())
+(define (dft-node tree)
+  (cond
+    [(null? tree) (restart)]
+    [(not (pair? tree)) tree]
+    [else (call/cc
+           (λ (cc)
+             (set! *saved*
+                   (cons (λ ()
+                           (cc (dft-node (cdr tree))))
+                         *saved*))
+             (dft-node (car tree))))]))
+(define (restart)
+  (if (null? *saved*)
+      'done
+      (let ([cont (car *saved*)])
+        (set! *saved* (cdr *saved*))
+        (cont))))
+(define (dft2 tree)
+  (set! *saved* '())
+  (let ([node (dft-node tree)])
+    (cond
+      [(eq? node 'done) '()]
+      [else (print node)
+            (restart)])))
