@@ -9,9 +9,9 @@ a
 (define-syntax (mutator-format stx)
   (syntax-case stx ()
     [(_ form v ...)
-     #`(f (format form
-                  #,@(for/list ([vs (in-list (syntax->list #`(v ...)))])
-                       #`(+ #,vs 1))))]))
+     #`(format form
+               #,@(for/list ([vs (in-list (syntax->list #`(v ...)))])
+                    #`(+ #,vs 1)))]))
 
 (mutator-format "~a" 1)
 (char-whitespace? #\ )
@@ -108,24 +108,53 @@ a
 
 ;; continuation-passing macros
 (define *cont* identity)
+
 (define-syntax-rule (=lambda (parm ...) body ...)
   (lambda (*cont* parm ...) body ...))
+
 (define-syntax (=define stx)
   (syntax-case stx ()
     [(_ (name parm ...) body ...)
-     (with-syntax ([f (datum->syntax #'name (string->symbol 
-                                             (format "=~a" (syntax-e #'name))))]
-                   [(arg ...) (generate-temporaries #'(parm ...))])
+     (with-syntax ([f (datum->syntax #'name 
+                                     (string->symbol (format "=~a" (syntax-e #'name))))])
        #`(begin
-           (define-syntax-rule (name arg ...)
-             (f *cont* arg ...))
+           (define-syntax-rule (name parm ...)
+             (f *cont* parm ...))
            (define (f *cont* parm ...) body ...)))]))
-(define-syntax-rule (=let-values ([(parm ...) (e ...)]) body ...)
-  (let ([*cont* (lambda (parm ...) body ...)]) e ...))
+
+(define-syntax-rule (=bind ([(parm ...) expr]) body ...)
+  (let ([*cont* (lambda (parm ...) body ...)])
+    (let-values ([(parm ...) expr])
+      (*cont* parm ...))))
+
 (define-syntax-rule (=values val ...)
   (*cont* val ...))
+
+(define-syntax-rule (=funcall fn val ...)
+  (fn *cont* val ...))
+
 (define-syntax-rule (=apply fn arg ...)
   (apply fn *cont* arg ...))
+
+;; macro test
+
+;; =values
+(=values (add1 1))
+;; =bind
+(let ([fn (=lambda (n) (add1 n))])
+  (=bind ([(y) (=funcall fn 9)])
+         (format "9+1=~a" y))) ;; > "9+1=10"
+;; =define & =values
+(=define (bar x)
+         (=values (list 'a (add1 x))))
+(bar 5)
+(=define (message)
+         (values 'hello 'there))
+(=define (baz)
+         (=bind ([(m n) (message)])
+                (=values (list m n))))
+(baz) ;; > '(hello there)
+
 ;; replace call/cc with cps
 (set! *saved* null)
 (=define (dft-node1 tree)
@@ -145,8 +174,8 @@ a
                      (next)))]))
 (=define (dft3 tree)
          (set! *saved* null)
-         (=let-values ([(node) ((dft-node1 tree))])
-                      (cond
-                        [(eq? node 'done) (=values null)]
-                        [else (print node)
-                              (restart1)])))
+         (=bind ([(node) (dft-node1 tree)])
+                (cond
+                  [(eq? node 'done) (=values null)]
+                  [else (print node)
+                        (restart1)])))
