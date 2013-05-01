@@ -4,14 +4,8 @@
 
 (define (f c)
   (cond
-    [c
-     (begin
-       1
-       2)]
-    [else
-     (begin
-       3
-       4)]))
+    [c (begin 1 2)]
+    [else (begin 3 4)]))
 
 (f 1)
 

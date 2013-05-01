@@ -9,7 +9,7 @@
   (*cont* id ...))
 
 ;; expected: "9 + 1 = 10", but get value is: 1
-(=bind ([(y) (=values 1)]) (format "9 + 1 = ~a" y))
+(=bind ([(y) (*cont* 1)]) (format "9 + 1 = ~a" y))
 
 (let ([*cont* (lambda (y) (format "9 + 1 = ~a" y))])
   (*cont* 1))
