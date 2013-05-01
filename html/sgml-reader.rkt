@@ -587,26 +587,22 @@
                     (vector-set! prefix qv kv)
                     (init kv (add1 qv))))))
         (init 0 1)))
-    ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop   
-    
-#|
-;; rewrite in call/ec
+    ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop
     (lambda (in)
       (list->string
-       (call/ec (lambda (out)
-                  (let ([loop 47])
-                    (begin
-                      (set! loop
-                            (lambda (matched outv)
-                              (let* ([c (read-char in)]
-                                     [matched (fall-back matched c)])
-                                (cond
-                                  [(or (eof-object? c) (= matched len)) (outv null)]
-                                  [(zero? matched) (cons c (call/ec (lambda (local-out)
-                                                                      (loop matched local-out))))]
-                                  [else (cons c (loop matched outv))]))))
-                      (loop 0 out)))))))
-|#
+       (let ([loop 47])
+         (begin
+           (set! loop
+                 (lambda (matched)
+                   (let ([c (read-char in)])
+                     (let ([matched (fall-back matched c)])
+                       (cond
+                         [(or (eof-object? c) (= matched len)) null]
+                         [(zero? matched) (cons c (loop matched))]
+                         [else (let ([rest (loop matched)])
+                                 (if (null? rest) null (cons c rest)))])))))
+           (loop 0)))))))
+#|
     (lambda (in)
       (list->string
        (let/ec out
@@ -617,6 +613,7 @@
                [(or (eof-object? c) (= matched len)) (out null)]
                [(zero? matched) (cons c (let/ec out (loop matched out)))]
                [else (cons c (loop matched out))]))))))))
+|#
 
 ;; "-->" makes more sense, but "--" follows the spec, but this isn't XML anymore.
 (define lex-comment-contents (gen-read-until-string "-->"))
