@@ -59,6 +59,7 @@ a
                  (set! frozen cc)
                  'a))))
 (+ 1 (frozen 'again))
+
 ;; another one
 (define froz1 1)
 (define froz2 2)
@@ -70,7 +71,57 @@ a
   (set! x (add1 x))
   x)
 (froz1 '())
-(froz2)
+(+ 1 (froz2))
+
+;; experiments
+(define froz3 10)
+(define froz4 11)
+(let ((x 0))
+  (call/cc
+   (λ (cc)
+     (set! froz3 (λ ()
+                   (cc 20)))))
+  (set! x (add1 x))
+  x)
+(let ((x 0))
+  (call/cc
+   (λ (cc)
+     (set! froz4 (λ ()
+                   (cc (+ 20 1))))
+     (set! x (add1 x))
+     x)))
+(froz3)
+(froz3)
+(froz4)
+
+;; some more
+(define froz5 '())
+(define froz6 '())
+(define (ff lst)
+  (cond
+    [(null? lst) 'done]
+    [else (call/cc
+           (λ (cc)
+             (set! froz5 (λ () 
+                           (cc (ff (cdr lst)))))
+             (car lst)))])) ;; set! froz5 to (λ () (ff (cdr lst)))
+(define (ff/f lst)
+  (let ((x (ff lst)))
+    (cond ((eq? x 'done) '())
+          (else (print x)
+                (froz5)))))
+(define (ff1 lst)
+  (cond
+    [(null? lst) 'done]
+    [else (call/cc
+           (λ (cc)
+             (set! froz6 (λ ()
+                           (cc (ff1 (cdr lst)))))))
+          (car lst)])) ;; set! froz6 to (λ () (car lst))
+(ff/f '(1 2 3))
+(ff1 '(1 2 3))
+(froz6)
+
 ;; dft
 (define t1 '(a (b (d h)) (c e (f i) g)))
 (define t2 '(1 (2 (3 6 7) 4 5)))
@@ -104,7 +155,19 @@ a
     (cond
       [(eq? node 'done) '()]
       [else (print node)
-            (restart)])))
+            (restart)]))) 
+;; explanation:
+;; the continuation *saved* stores is like
+;; (let ([node (cc)])
+;;    (cond
+;;      [(eq? node 'done) '()]
+;;      [else (print node) (restart)]))
+;; and inside cc it's like
+;; (cond
+;;   [(null? tree) (restart)]
+;;   [(not (pair? tree)) tree]
+;;   [else ...])
+;; so the call of continuation causes recursion
 
 ;; continuation-passing macros
 (define *cont* identity)
@@ -123,15 +186,16 @@ a
            (define (f *cont* parm ...) body ...)))]))
 
 (define-syntax-rule (=bind ([(parm ...) expr]) body ...)
-  (let ([*cont* (lambda (parm ...) body ...)])
-    (let-values ([(parm ...) expr])
-      (*cont* parm ...))))
+  (let ([*cont* (lambda (parm ...) body ...)]) expr))
+
+(define (funcall fn . args)
+  (apply fn args))
 
 (define-syntax-rule (=values val ...)
-  (*cont* val ...))
+  (funcall *cont* val ...))
 
 (define-syntax-rule (=funcall fn val ...)
-  (fn *cont* val ...))
+  (funcall fn *cont* val ...))
 
 (define-syntax-rule (=apply fn arg ...)
   (apply fn *cont* arg ...))
@@ -141,19 +205,22 @@ a
 ;; =values
 (=values (add1 1))
 ;; =bind
-(let ([fn (=lambda (n) (add1 n))])
+(=define (add/one n) (=values (add1 n)))
+(let ([fn (=lambda (n) (add/one n))])
   (=bind ([(y) (=funcall fn 9)])
          (format "9+1=~a" y))) ;; > "9+1=10"
 ;; =define & =values
+#|
 (=define (bar x)
          (=values (list 'a (add1 x))))
 (bar 5)
 (=define (message)
-         (values 'hello 'there))
+         (=values 'hello 'there))
 (=define (baz)
          (=bind ([(m n) (message)])
                 (=values (list m n))))
 (baz) ;; > '(hello there)
+|#
 
 ;; replace call/cc with cps
 (set! *saved* null)
@@ -168,10 +235,9 @@ a
 (=define (restart1)
          (cond
            [(null? *saved*) (=values 'done)]
-           [else (let ([next (car *saved*)])
-                   (begin
-                     (set! *saved* (cdr *saved*))
-                     (next)))]))
+           [else (let ([cont (car *saved*)])
+                   (set! *saved* (cdr *saved*))
+                   (cont))]))
 (=define (dft3 tree)
          (set! *saved* null)
          (=bind ([(node) (dft-node1 tree)])

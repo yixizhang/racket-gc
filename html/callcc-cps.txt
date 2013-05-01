@@ -5,3 +5,33 @@ call/cc -> (lambda (f cc) (f (lambda (x k) (cc x)) cc))
 ;; cps -> (c x) -> go back to saved continuation with the value you'd return
 ;; f is the proc argument in (call/cc (lambda (proc) ... )),
 ;; so that when calling (f (lambda (x k) (cc x) ...)) it will actually go into cc.
+
+(call/cc
+    (lambda (cc)
+        ...
+        (cc x)
+        ...))
+;; call/cc returns the current continuation
+;; x is returned by call/cc because 'cc makes it the current continuation
+;; or explicitly ((lambda (a) a) x)
+(define tmp ...)
+(call/cc
+    (lambda (x)
+        ...
+        (set! tmp cc)
+        ...))
+;; cc would be the current continuation when call/cc is called/created
+'before
+(call/cc
+    (lambda (cc)
+        ...
+        (set! tmp (lambda ()
+                    (cc ...)))
+        ...))
+'after
+;; tmp would be set to the current continuation when call/cc is called/created
+;; means tmp would be (lambda () (begin 'before 'after))
+
+;; note that continuation is not simply (lambda (x) e ...),
+;; continuation is a function plus a pointer to the whole
+;; stack pending at the time it was created.
