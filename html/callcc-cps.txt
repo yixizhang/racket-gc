@@ -1,11 +1,3 @@
-call/cc -> (lambda (f cc) (f (lambda (x k) (cc x)) cc))
-;; x is the value you'd return?
-;; k is the continuation when x is called on, discarded
-;; cc is the saved current continuation
-;; cps -> (c x) -> go back to saved continuation with the value you'd return
-;; f is the proc argument in (call/cc (lambda (proc) ... )),
-;; so that when calling (f (lambda (x k) (cc x) ...)) it will actually go into cc.
-
 (call/cc
     (lambda (cc)
         ...
@@ -35,3 +27,48 @@ call/cc -> (lambda (f cc) (f (lambda (x k) (cc x)) cc))
 ;; note that continuation is not simply (lambda (x) e ...),
 ;; continuation is a function plus a pointer to the whole
 ;; stack pending at the time it was created.
+
+;; think in continuation way
+E[(call/cc v)] --> E[v (lambda (x) (abort E[x]))]
+;; (abort E[x]) means the continuation/environment besides the later/inner one related to x.
+;; only works when the whole program/interpreter/compiler is written in cps way.
+call/cc --> (lambda (f cc) (f (lambda (x k) (cc x)) cc))
+;; f is the function passed into call/cc
+;; call/cc means 'I pass the current continuation into your function"
+;; so f is the (lambda (cc) ...) in (call/cc (lambda (cc) ...))
+
+;; chat history
++ 1 2) --> 3
+(+ 2 3) --> 5
+(* 4 4) -> 16
+(+ num num) --> num
+(* num num) --> num
+((lambda (x) e) v) --> e{x:=v}
+(define x )v
+(define x v)
+...x...
+-->
+...v...
+(define f (lambda (x) (+ x x)))
+(f (+ 1 2))
+--> (f 3)
+((lambda (x) (+ x x)) 3)
+(+ 3 3)
+6
+(+ (+ 1 2) (+ 3 4))
+(+ 1 2) --> 3
+(+ (+ 1 2) (+ 3 4))  --/--> (+ (+ 1 2) 7)
+--/-->
+E
+E = [] | (+ E e) | (+ v E)
+|
+E[(+ 1 2)] --> E[3]
+E = (+ [] (+ 3 4))
+E[(+ 1 2)] --> E[3]
+E[(call/cc v)] --> E[v (lambda (x) E[x])]
+E[(call/cc v)] --> E[(v (lambda (x) E[x]))]
+E[(call/cc v)] --> E[v (lambda (x) (abort E[x]))]
+E[(abort e)] --> e
+(+ (abort (+ 1 2)) 3)
+3
+abort-current-continuation
