@@ -48,15 +48,17 @@
 (define (gc:set-first! pr-ptr new)
   (cond
     [(gc:cons? pr-ptr)
-     (heap-set/check! (+ pr-ptr 1) new)
-     (write-barrier pr-ptr new)]
+     (heap-set! (+ pr-ptr 1) new)
+     (write-barrier pr-ptr new)
+     (heap-cont/check)]
     [else (error 'set-first! "non pair @ ~s" pr-ptr)]))
 
 (define (gc:set-rest! pr-ptr new)
   (cond 
     [(gc:cons? pr-ptr)
-     (heap-set/check! (+ pr-ptr 2) new)
-     (write-barrier pr-ptr new)]
+     (heap-set! (+ pr-ptr 2) new)
+     (write-barrier pr-ptr new)
+     (heap-cont/check)]
     [else (error 'set-rest! "non pair @ ~s" pr-ptr)]))
 
 (define (write-barrier ptr new) 
@@ -69,17 +71,17 @@
                  (equal? (heap-ref new) 'white-struct)
                  (equal? (heap-ref new) 'white-struct-instance)))
     (case (heap-ref new)
-      [(white-pair) (heap-set/check! new 'grey-pair)
+      [(white-pair) (heap-set! new 'grey-pair)
                     (push/cont new)]
-      [(white-flat) (heap-set/check! new 'grey-flat)
+      [(white-flat) (heap-set! new 'grey-flat)
                     (push/cont new)]
-      [(white-proc) (heap-set/check! new 'grey-proc)
+      [(white-proc) (heap-set! new 'grey-proc)
                     (push/cont new)]
-      [(white-vector) (heap-set/check! new 'grey-vector)
+      [(white-vector) (heap-set! new 'grey-vector)
                       (push/cont new)]
-      [(white-struct) (heap-set/check! new 'grey-struct)
+      [(white-struct) (heap-set! new 'grey-struct)
                     (push/cont new)]
-      [(white-struct-instance) (heap-set/check! new 'grey-struct-instance)
+      [(white-struct-instance) (heap-set! new 'grey-struct-instance)
                     (push/cont new)])))
 
 (define (gc:closure-code-ptr loc)
@@ -99,15 +101,17 @@
 
 (define (gc:alloc-flat fv)
   (define ptr (alloc 2 #f #f))
-  (heap-set/check! ptr 'flat)
-  (heap-set/check! (+ ptr 1) fv)
+  (heap-set! ptr 'flat)
+  (heap-set! (+ ptr 1) fv)
+  (heap-cont/check)
   ptr)
 
 (define (gc:cons hd tl)
   (define ptr (alloc 3 hd tl))
-  (heap-set/check! ptr 'pair)
-  (heap-set/check! (+ ptr 1) hd)
-  (heap-set/check! (+ ptr 2) tl)
+  (heap-set! ptr 'pair)
+  (heap-set! (+ ptr 1) hd)
+  (heap-set! (+ ptr 2) tl)
+  (heap-cont/check)
   ptr)
 
 (define (gc:closure code-ptr free-vars)
@@ -115,12 +119,13 @@
   (define next (alloc (+ fv-count 3)
                       (vector->roots free-vars)
                       '()))
-  (heap-set/check! next 'proc)
-  (heap-set/check! (+ next 1) code-ptr)
-  (heap-set/check! (+ next 2) fv-count)
+  (heap-set! next 'proc)
+  (heap-set! (+ next 1) code-ptr)
+  (heap-set! (+ next 2) fv-count)
   (for ([x (in-range 0 fv-count)])
-    (heap-set/check! (+ next 3 x)
+    (heap-set! (+ next 3 x)
                (vector-ref free-vars x)))
+  (heap-cont/check)
   next)
 
 ;; vector related
@@ -156,7 +161,8 @@
   (cond 
     [(< number (gc:vector-length loc))
      (heap-set! (+ loc 2 number) thing)
-     (write-barrier loc thing)]
+     (write-barrier loc thing)
+     (heap-cont/check)]
     [else
       (error 'gc:vector-set! "vector index out of range")]))
 
@@ -169,7 +175,8 @@
   (heap-set! (+ next 1) name)
   (heap-set! (+ next 2) parent)
   (printf "~s\n" fields-count)
-  (heap-set/check! (+ next 3) fields-count)
+  (heap-set! (+ next 3) fields-count)
+  (heap-cont/check)
   next)
 
 ;; gc:alloc-struct-instance : loc (vectorof loc) -> loc
@@ -183,7 +190,8 @@
   (for ([x (in-range 0 fv-count)])
        (heap-set! (+ next 2 x)
                         (vector-ref fields-value x)))
-  (heap-set/check! next 'struct-instance)
+  (heap-set! next 'struct-instance)
+  (heap-cont/check)
   next)
 
 ;; gc:struct-pred : loc loc -> true/false
@@ -210,18 +218,18 @@
   (define next (find-free-space 4 n))
   (cond
     [next 
-      (heap-set/check! 1 (+ n (heap-ref 1)))
+      (heap-set! 1 (+ n (heap-ref 1)))
       (unless (<= (heap-ref 1) (heap-size)) (error 'alloc "> heap-size"))
       (case (heap-ref 0)
         [(not-in-gc) (when (>= (heap-ref 1) heap-threshold)
-                       (heap-set/check! 0 'mark-white!)
-                       (heap-set/check! 2 (+ n (heap-ref 2))) ;; start step count
+                       (heap-set! 0 'mark-white!)
+                       (heap-set! 2 (+ n (heap-ref 2))) ;; start step count
                        (mark-white! 4)
                        (traverse/roots (get-root-set))
                        (traverse/roots some-roots)
                        (traverse/roots more-roots)
-                       (heap-set/check! 0 'mark-black!))]
-        [(mark-black!) (heap-set/check! 2 (+ n (heap-ref 2))) ;; step count
+                       (heap-set! 0 'mark-black!))]
+        [(mark-black!) (heap-set! 2 (+ n (heap-ref 2))) ;; step count
                        (traverse/roots-white some-roots)
                        (traverse/roots-white more-roots)
                        (cond 
@@ -362,12 +370,13 @@
               (= loc 0))
     (error 'traverse/incre-mark "not cont at ~a" loc))
   (cond
-    [(= loc 0) (heap-set/check! 2 0)
-               (heap-set/check! 3 0)
-               (heap-set/check! 0 'free-white!)
+    [(= loc 0) (heap-set! 2 0)
+               (heap-set! 3 0) ;; no need for check/cont-alloc
+               (heap-set! 0 'free-white!)
                (free-white! 4)
                (check/tag 4)
-               (heap-set/check! 0 'not-in-gc)]
+               (heap-set! 0 'not-in-gc)
+               (heap-cont/check)]
     [else (define ptr (heap-ref (+ loc 1)))
           (case (heap-ref ptr)
             [(flat grey-flat) (mark-black ptr)
@@ -413,52 +422,69 @@
 (define (mark-black loc)
   (case (heap-ref loc)
     [(grey-flat)
-     (heap-set/check! loc 'flat)]
+     (heap-set! loc 'flat)
+     (heap-cont/check)]
     [(grey-pair)
      (mark-grey (heap-ref (+ loc 1)))
      (mark-grey (heap-ref (+ loc 2)))
-     (heap-set/check! loc 'pair)]
+     (heap-set! loc 'pair)
+     (heap-cont/check)]
     [(grey-proc)
      (for ([i (in-range (heap-ref (+ loc 2)))])
           (mark-grey (heap-ref (+ loc 3 i))))
-     (heap-set/check! loc 'proc)]
+     (heap-set! loc 'proc)
+     (heap-cont/check)]
     [(grey-vector)
      (for ([i (in-range (heap-ref (+ loc 1)))])
           (mark-grey (heap-ref (+ loc 2 i))))
-     (heap-set/check! loc 'vector)]
+     (heap-set! loc 'vector)
+     (heap-cont/check)]
     [(grey-struct)
      (define parent (heap-ref (+ loc 2)))
      (when parent (mark-grey parent))
-     (heap-set/check! loc 'struct)]
+     (heap-set! loc 'struct)
+     (heap-cont/check)]
     [(grey-struct-instance)
      (define fv-count (heap-ref (+ 3 (heap-ref (+ loc 1)))))
      (mark-grey (heap-ref (+ loc 1)))
      (for ([i (in-range fv-count)])
           (mark-grey (heap-ref (+ loc 2 i))))
-     (heap-set/check! loc 'struct-instance)]
+     (heap-set! loc 'struct-instance)
+     (heap-cont/check)]
     [(pair flat proc struct struct-instance white-pair white-flat white-proc white-struct white-struct-instance cont) (void)]))
 
 (define (mark-grey loc)
   (case (heap-ref loc)
-    [(white-pair) (heap-set/check! loc 'grey-pair)]
-    [(white-flat) (heap-set/check! loc 'grey-flat)]
-    [(white-proc) (heap-set/check! loc 'grey-proc)]
-    [(white-vector) (heap-set/check! loc 'grey-vector)]
-    [(white-struct) (heap-set/check! loc 'grey-struct)]
-    [(white-struct-instance) (heap-set/check! loc 'grey-struct-instance)]
+    [(white-pair) (heap-set! loc 'grey-pair)
+                  (heap-cont/check)]
+    [(white-flat) (heap-set! loc 'grey-flat)
+                  (heap-cont/check)]
+    [(white-proc) (heap-set! loc 'grey-proc)
+                  (heap-cont/check)]
+    [(white-vector) (heap-set! loc 'grey-vector)
+                    (heap-cont/check)]
+    [(white-struct) (heap-set! loc 'grey-struct)
+                    (heap-cont/check)]
+    [(white-struct-instance) (heap-set! loc 'grey-struct-instance)
+                             (heap-cont/check)]
     [(pair flat proc struct struct-instance grey-pair grey-flat grey-proc grey-struct grey-struct-instance cont) (void)]))
 
 ;; helper functions
 
-;; check if any black object points to white objects
-(define (heap-set/check! loc thing)
-  (heap-set! loc thing)
-  (when (= loc 3)
-    (unless (or (equal? (heap-ref thing) 'cont)
-                (= thing 0))
-      (error 'heap-set/check! "should be cont at ~a" thing)))
+;; heap-check & check/cont
+;; ToDo: why scan heap twice?
+(define (heap-cont/check)
   (check/cont 4)
   (heap-check 4))
+
+;; check what allocated to cont
+(define (check/cont-alloc loc thing)
+  (cond
+    [(= loc 3)
+     (unless (or (equal? (heap-ref thing) 'cont)
+                 (= thing 0))
+       (error 'check/cont-alloc "not a cont at location ~a" thing))]
+    [else (error 'check/cont-alloc "meant to check location 3")]))
 
 (define (heap-check loc)
   (when (< loc (heap-size))
@@ -466,7 +492,7 @@
       [(pair) 
        (if (or (white? (heap-ref (+ loc 1)))
                (white? (heap-ref (+ loc 2))))
-         (error 'heap-set/check! "black object points to white object at ~a" loc)
+         (error 'heap-check "black object points to white object at ~a" loc)
          (heap-check (+ loc 3)))]
       [(flat) 
        (heap-check (+ loc 2))]
@@ -478,7 +504,7 @@
          [else
            (for ([i (in-range closure-size)])
                 (when (white? (heap-ref (+ loc 3 i)))
-                  (error 'heap-set/check! "black object points to white object at ~a" loc)))
+                  (error 'heap-check "black object points to white object at ~a" loc)))
            (heap-check (+ loc 3 closure-size))])]
       [(vector)
        (define size (heap-ref (+ loc 1)))
@@ -488,21 +514,21 @@
          [else
            (for ([i (in-range size)])
                 (when (white? (heap-ref (+ loc 2 i)))
-                  (error 'heap-set/check! "black object points to white object at ~a" loc)))
+                  (error 'heap-check "black object points to white object at ~a" loc)))
            (heap-check (+ loc 2 size))])]
       [(struct)
        (define parent (heap-ref (+ loc 2)))
        (when (and parent 
                   (white? parent))
-         (error 'heap-set/check! "black object points to white object at ~a" loc))
+         (error 'heap-check "black object points to white object at ~a" loc))
        (heap-check (+ loc 4))]
       [(struct-instance)
        (when (white? (heap-ref (+ loc 1)))
-         (error 'heap-set/check! "black object points to white object at ~a" loc))
+         (error 'heap-check "black object points to white object at ~a" loc))
        (define field-count (heap-ref (+ 3 (heap-ref (+ loc 1)))))
        (for ([i (in-range field-count)])
          (when (white? (heap-ref (+ loc 2 i)))
-           (error 'heap-set/check! "black object points to white object at ~a" loc)))
+           (error 'heap-check "black object points to white object at ~a" loc)))
        (heap-check (+ loc 2 field-count))]
       [(white-pair grey-pair)
        (heap-check (+ loc 3))]
@@ -577,7 +603,9 @@
   (cond
     [(= loc 0) 0]
     [else
+      (check/cont-alloc 3 (heap-ref (+ loc 2)))
       (heap-set! 3 (heap-ref (+ loc 2)))
+      (heap-cont/check)
       ;;(heap-set! loc 'free)
       ;;(heap-set! (+ loc 1) 'free)
       ;;(heap-set! (+ loc 2) 'free)
@@ -593,20 +621,24 @@
       (heap-set! loc 'cont)
       (heap-set! (+ loc 1) ptr)
       (heap-set! (+ loc 2) head)
-      (heap-set! 3 loc)]))
+      (check/cont-alloc 3 loc)
+      (heap-set! 3 loc)
+      (heap-cont/check)]))
 
 (define (continue/incre-mark)
   (if (step/finished?)
-    (heap-set/check! 2 0)
+    (heap-set! 2 0)
     (traverse/incre-mark (next/cont))))
 
 (define (clean/cont loc)
   (heap-set! loc 'free)
   (heap-set! (+ loc 1) 'free)
-  (heap-set! (+ loc 2) 'free))
+  (heap-set! (+ loc 2) 'free)
+  (heap-cont/check))
 
 (define (step/count n)
-  (heap-set/check! 2 (- (heap-ref 2) n)))
+  (heap-set! 2 (- (heap-ref 2) n))
+  (heap-cont/check))
 
 (define (step/finished?)
   (<= (heap-ref 2) 0))

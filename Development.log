@@ -1,6 +1,7 @@
 week 04-08-13
 
 #= ToDo =#
+incrementalize mark-white! and free-white
 make generational gc support vector and struct
 (make heap data-structure related code modular?)
 combine generational gc and incremental gc
