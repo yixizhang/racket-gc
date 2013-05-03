@@ -581,11 +581,11 @@
     (let ([init 47])
       (begin
         (set! init
-              (lambda (kv qv)
-                (when (< qv len)
-                  (let ([k (fall-back kv (string-ref stop qv))])
-                    (vector-set! prefix qv kv)
-                    (init kv (add1 qv))))))
+              (lambda (k q)
+                (when (< q len)
+                  (let ([k (fall-back k (string-ref stop q))])
+                    (vector-set! prefix q k)
+                    (init k (add1 q))))))
         (init 0 1)))
     ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop
     (lambda (in)

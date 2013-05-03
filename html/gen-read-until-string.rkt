@@ -54,11 +54,11 @@
     (let ([init 47])
       (begin
         (set! init
-              (lambda (kv qv)
-                (when (< qv len)
-                  (let ([k (fall-back kv (string-ref stop qv))])
-                    (vector-set! prefix qv kv)
-                    (init kv (add1 qv))))))
+              (lambda (k q)
+                (when (< q len)
+                  (let ([k (fall-back k (string-ref stop q))])
+                    (vector-set! prefix q k)
+                    (init k (add1 q))))))
         (init 0 1)))
     ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop
     (lambda (in)
@@ -89,26 +89,16 @@
 ;; test
 (print-only-errors #t)
 
-(test
- (lex-comment-contents (open-input-string "--123---->"))
- (lex-comment-contents1 (open-input-string "--123---->")))
+(define (random-string)
+  (apply string
+         (for/list ([i (in-range 100)])
+           (case (random 4)
+             [(0) #\-]
+             [(1) #\>]
+             [(2) #\]]
+             [(3) (integer->char (+ (random 26) 96))]))))
 
-(test
- (lex-comment-contents (open-input-string "abc-->123-->"))
- (lex-comment-contents1 (open-input-string "abc-->123-->")))
-
-(test
- (lex-pi-data (open-input-string "--123--??>"))
- (lex-pi-data1 (open-input-string "--123--??>")))
-
-(test
- (lex-pi-data (open-input-string "--12??3--??>"))
- (lex-pi-data1 (open-input-string "--12??3--??>")))
-
-(test
- (lex-cdata-contents (open-input-string "]]>123]]>"))
- (lex-cdata-contents1 (open-input-string "]]>123]]>")))
-
-(test
- (lex-cdata-contents (open-input-string "123]]abc--123]]]]>"))
- (lex-cdata-contents1 (open-input-string "123]]abc--123]]]]>")))
+(for ([i (in-range 100)])
+  (define s (random-string))
+  (test (lex-comment-contents (open-input-string s))
+        (lex-comment-contents1 (open-input-string s))))
