@@ -8,6 +8,8 @@
  [html-spec spec/c])
 |#
 
+(provide (all-defined-out))
+
 (define html-spec
   '(((mzscheme) pcdata)
     ((html) body head)

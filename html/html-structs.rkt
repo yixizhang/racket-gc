@@ -2,7 +2,9 @@
 (allocator-setup "../incr-struct.rkt" 200)
 
 (require racket/contract
-         xml)
+         "xml-structures.rkt")
+
+(provide (all-defined-out))
 
 (define-struct html-element (attributes))
 (define-struct (html-full html-element) (content))

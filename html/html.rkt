@@ -7,7 +7,7 @@
          "html-spec.rkt"
          "sgml-reader.rkt"
          racket/contract
-         xml)
+         "xml-structures.rkt")
 #|
 (provide (all-from-out "html-structs.rkt")
          read-html-comments)
