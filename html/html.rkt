@@ -506,13 +506,39 @@
    ((or (pcdata? x) (entity? x)) (cons x acc))
    (else acc)))
 
+
+;; helper functions
+(define null empty)
+(define null? empty?)
+;; foldr : proc init lst -> any/c
+(define (foldr proc init lst)
+  (let ([lst (reverse lst)])
+    (let ([loop 47])
+      (begin
+        (set! loop
+          (lambda (v l)
+            (cond
+              [(null? l) v]
+              [else (loop (proc (car l) v) (cdr l))])))
+        (loop init lst)))))
+;; append : lst lst -> lst
+(define (append a b)
+  (cond
+    [(null? a) b]
+    [else (cons (car a) (append (cdr a) b))]))
+;; map : proc lst -> lst
+(define (map proc lst)
+  (cond
+    [(null? lst) null]
+    [else (cons (proc (car lst)) (map proc (cdr lst)))]))
+
+
 ;; xml->html : Document -> Html
 (define (xml->html doc)
   (let ([root (document-element doc)])
-    (unless (eq? 'html (element-name root))
+    (when (not (eq? 'html (element-name root)))
       (error 'xml->html "This is not an html document.  Expected 'html, given ~a" (element-name root)))
     (make-html (element-attributes root) (xml-contents->html (element-content root)))))
-
 
 ;; xml-content->html : (listof Content) -> (listof Html-element)
 (define (xml-contents->html contents)
@@ -534,17 +560,17 @@
 
 ;; repackage-html : (listof Html-content) -> Html
 (define (repackage-html contents)
-  (let* ([html (memf html? contents)]
-         [peeled (peel-f html? contents null)]
-         [body (memf body? peeled)])
-    (make-html (if html
-                   (html-element-attributes (car html))
-                   null)
-               (append (filter head? peeled)
-                       (list (make-body (if body
-                                            (html-element-attributes (car body))
-                                            null)
-                                        (filter (compose not head?) (peel-f body? peeled null))))))))
+  (let ([html (memf html? contents)])
+    (let ([peeled (peel-f html? contents null)])
+      (let ([body (memf body? peeled)])
+        (make-html (if html
+                     (html-element-attributes (car html))
+                     null)
+                   (append (filter head? peeled)
+                           (cons (make-body (if body
+                                              (html-element-attributes (car body))
+                                              null)
+                                            (filter (compose not head?) (peel-f body? peeled null))) null)))))))
 
 ;; clean-up-pcdata : (listof Content) -> (listof Content)
 ;; Each pcdata inside a tag that isn't supposed to contain pcdata is either
@@ -574,15 +600,15 @@
               (let ([non-elements (first-non-elements content)]
                     [more (memf element? content)])
                 (if more
-                    (let* ([el (car more)]
-                           [possible (may-contain (element-name el))])
+                  (let ([el (car more)])
+                    (let ([possible (may-contain (element-name el))])
                       (if (or (not possible) (memq 'pcdata possible))
-                          (cons (recontent-xml el (append non-elements (clean-up-pcdata (element-content el)) (eliminate-pcdata (first-non-elements (cdr more)))))
-                                (or (memf element? (cdr more)) null))
-                          (cons (recontent-xml el (eliminate-pcdata (element-content el)))
-                                (eliminate-pcdata (cdr more)))))
-                    null)))])
-    clean-up-pcdata))
+                        (cons (recontent-xml el (append non-elements (clean-up-pcdata (element-content el)) (eliminate-pcdata (first-non-elements (cdr more)))))
+                              (or (memf element? (cdr more)) null))
+                        (cons (recontent-xml el (eliminate-pcdata (element-content el)))
+                              (eliminate-pcdata (cdr more))))))
+                  null)))])
+           clean-up-pcdata))
 
 ;; first-non-elements : (listof Content) -> (listof Content)
 (define (first-non-elements content)
