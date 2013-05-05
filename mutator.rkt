@@ -402,9 +402,10 @@
        (for ([x (in-list (syntax->list #'(f ...)))])
          (unless (identifier? x)
            (raise-syntax-error 'define-struct "expected an identifier" stx x)))
-       #`(begin
-           (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
-           (define-struct/offset '() s (f ...))))]
+       (let ([parent-fields (datum->syntax #f '())])
+         #`(begin
+             (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
+             (define-struct/offset #,parent-fields s (f ...)))))]
     [(_ (s t) (f ...))
      (begin
        (unless (identifier? #'s)
