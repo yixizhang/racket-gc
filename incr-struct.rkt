@@ -139,33 +139,39 @@
   (heap-cont/check)
   next)
 
-(define (gc:vector-length loc)
-  (if (gc:vector? loc)
-    (heap-ref (+ loc 1))
-    (error 'gc:vector-length "non vector")))
-
-;; gc:vector-ref loc number -> loc
-(define (gc:vector-ref loc number)
-  (cond
-    [(< number (gc:vector-length loc))
-     (heap-ref (+ loc 2 number))]
-    [else
-      (error 'gc:vector-ref "vector index out of range")]))
-
 (define (gc:vector? loc)
   (or (equal? (heap-ref loc) 'vector)
       (equal? (heap-ref loc) 'white-vector)
       (equal? (heap-ref loc) 'grey-vector)))
 
+(define (gc:vector-length loc)
+  (if (gc:vector? loc)
+    (heap-ref (+ loc 1))
+    (error 'gc:vector-length "non vector @ ~s" loc)))
+
+;; gc:vector-ref loc number -> loc
+(define (gc:vector-ref loc number)
+  (unless (gc:vector? loc)
+    (error 'gc:vector-ref "non vector @ ~s" loc))
+  (cond
+    [(< number (gc:vector-length loc)) (heap-ref (+ loc 2 number))]
+    [else (error 'gc:vector-ref 
+                 "vector @ ~s index ~s out of range"
+                 loc number)]))
+
 ;; gc:vector-set! : loc number loc -> void
 (define (gc:vector-set! loc number thing)
+  (unless (gc:vector? loc)
+    (error 'gc:vector-set! "non vector @ ~s" loc))
   (cond 
     [(< number (gc:vector-length loc))
      (heap-set! (+ loc 2 number) thing)
      (write-barrier loc thing)
      (heap-cont/check)]
     [else
-      (error 'gc:vector-set! "vector index out of range")]))
+      (error 'gc:vector-set! 
+             "vector @ ~s index ~s out of range"
+             loc number)]))
 
 ;; define-struct related
 ;; gc:alloc-struct : symbol loc number -> loc
@@ -195,7 +201,6 @@
   next)
 
 ;; gc:struct-pred : loc loc -> true/false
-;; suport parents/inheritance
 (define (gc:struct-pred s instance)
   (and (equal? (heap-ref s) 'struct)
        (gc:struct-pred-helper s (heap-ref (+ instance 1)))))

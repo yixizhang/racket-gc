@@ -112,16 +112,6 @@
         (table/alloc (+ pr-loc 2) new)))
     (error 'set-rest! "non pair")))
 
-(define (table/alloc pointer target)
-  (define next (heap-ref/check! (2nd-gen-size)))
-  (cond
-    [(>= (+ next 2) (heap-size))
-     (error 'table/alloc "no space for indirection table")]
-    [else
-      (heap-set! next pointer)
-      (heap-set! (+ next 1) target)
-      (heap-set! (2nd-gen-size) (+ next 2))]))
-
 ;; gc:closure : heap-value (vectorof loc) -> loc
 ;; allocates a closure with 'code-ptr' and the free variables
 ;; in the vector 'free-vars'.
@@ -167,6 +157,88 @@
     [(proc) #t]
     [(frwd) (gc:closure? (heap-ref/check! (+ loc 1)))]
     [else #f]))
+
+;; vector related
+(define (gc:vector length loc)
+  (define next (alloc (+ length 2) #f #f))
+  (heap-set! next 'vector)
+  (heap-set! (+ next 1) length)
+  (for ([i (in-range length)])
+       (heap-set! (+ next 2 i) loc))
+  next)
+
+(define (gc:vector? loc)
+  (equal? (heap-ref loc) 'vector))
+
+(define (gc:vector-length loc)
+  (if (gc:vector? loc)
+    (heap-ref (+ loc 1))
+    (error 'gc:vector-length "non vector @ ~s" loc)))
+
+(define (gc:vector-ref loc number)
+  (unless (gc:vector? loc)
+    (error 'gc:vector-ref "non vector @ ~s" loc))
+  (cond
+    [(< number (gc:vector-length loc)) (heap-ref (+ loc 2 number))]
+    [else (error 'gc:vector-ref 
+                 "vector @ ~s index ~s  out of range"
+                 loc number)]))
+
+(define (gc:vector-set! loc number thing)
+  (unless (gc:vector? loc)
+    (error 'gc:vector-set! "non vector @ ~s" loc))
+  (cond 
+    [(< number (gc:vector-length loc)) (heap-set! (+ loc 2 number) thing)]
+    [else (error 'gc:vector-set! 
+                 "vector @ ~s index ~s out of range"
+                 loc number)]))
+
+;; struct related
+(define (gc:alloc-struct name parent fields-count)
+  (define next (alloc 4 parent #f))
+  (heap-set! next 'struct)
+  (heap-set! (+ next 1) name)
+  (heap-set! (+ next 2) parent)
+  (heap-set! (+ next 3) fields-count)
+  next)
+
+(define (gc:alloc-struct-instance s fields-value)
+  (define fv-count (vector-length fields-value))
+  (define next (alloc (+ fv-count 2)
+                      (vector->roots fields-value)
+                      '()))
+  (heap-set! (+ next 1) s)
+  (for ([x (in-range 0 fv-count)])
+       (heap-set! (+ next 2 x)
+                        (vector-ref fields-value x)))
+  (heap-set! next 'struct-instance)
+  next)
+
+(define (gc:struct-pred s instance)
+  (and (equal? (heap-ref s) 'struct)
+       (gc:struct-pred-helper s (heap-ref (+ instance 1)))))
+
+(define (gc:struct-pred-helper target s)
+  (and s
+       (or (= target s)
+           (gc:struct-pred-helper target (heap-ref (+ s 2))))))
+
+(define (gc:struct-select s instance index)
+  (unless (gc:struct-pred s instance)
+    (error 'gc:struct-select "value at ~a is not an instance of ~a" 
+           instance
+           (heap-ref (+ 1 s))))
+  (heap-ref (+ instance 2 index)))
+
+(define (table/alloc pointer target)
+  (define next (heap-ref/check! (2nd-gen-size)))
+  (cond
+    [(>= (+ next 2) (heap-size))
+     (error 'table/alloc "no space for indirection table")]
+    [else
+      (heap-set! next pointer)
+      (heap-set! (+ next 1) target)
+      (heap-set! (2nd-gen-size) (+ next 2))]))
 
 ;; alloc : number[size] roots roots -> loc
 (define (alloc n some-roots more-roots)
