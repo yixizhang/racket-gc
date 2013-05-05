@@ -136,6 +136,7 @@
   (heap-set! (+ next 1) length)
   (for ([i (in-range length)])
        (heap-set! (+ next 2 i) loc))
+  (heap-cont/check)
   next)
 
 (define (gc:vector-length loc)
@@ -174,7 +175,6 @@
   (heap-set! next 'struct)
   (heap-set! (+ next 1) name)
   (heap-set! (+ next 2) parent)
-  (printf "~s\n" fields-count)
   (heap-set! (+ next 3) fields-count)
   (heap-cont/check)
   next)

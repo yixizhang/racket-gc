@@ -1,13 +1,13 @@
 week 04-08-13
 
 #= ToDo =#
-incrementalize mark-white! and free-white
 make generational gc support vector and struct
 (make heap data-structure related code modular?)
 combine generational gc and incremental gc
+incrementalize mark-white! and free-white
+write xml->html or html->x-exprs sample code
 update mutator-cond macro to support (begin e ...) for each branch
 add 2nd form of let to mutator macros
-implement call/cc call/ec and let/cc let/ec, etc., to plai/gc2/mutator
 maybe double vector size when all slots are filled (check paper/algo/wiki)
 
 #= Finished =#
