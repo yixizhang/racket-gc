@@ -570,20 +570,14 @@
       [(flat white-flat grey-flat) (check/cont (+ loc 2))]
       [(proc white-proc grey-proc) 
        (define closure-size (heap-ref (+ loc 2)))
-       (case closure-size
-         [(free) (check/cont (+ loc 3))]
-         [else (check/cont (+ loc 3 closure-size))])]
+       (check/cont (+ loc 3 closure-size))]
       [(vector white-vector grey-vector)
        (define size (heap-ref (+ loc 1)))
-       (case size
-         [(free) (check/cont (+ loc 2))]
-         [else (check/cont (+ loc 2 size))])]
+       (check/cont (+ loc 2 size))]
       [(struct white-struct grey-struct) (check/cont (+ loc 4))]
       [(struct-instance white-struct-instance grey-struct-instance)
-       (define fv-count (heap-ref (+ 3 (heap-ref (+ loc 1)))))
-       (case fv-count
-         [(free) (check/cont (+ loc 2))]
-         [else (check/cont (+ loc fv-count))])]
+       (define fields-num (heap-ref (+ 3 (heap-ref (+ loc 1)))))
+       (check/cont (+ loc 2 fields-num))]
       [(free) (check/cont (+ loc 1))]
       [(cont) (check-helper/cont (heap-ref (+ loc 2)))]
       [else (error 'check/cont "wrong tag at ~a" loc)])))
