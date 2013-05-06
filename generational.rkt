@@ -200,8 +200,8 @@
 (define (gc:alloc-struct-instance s fields-value)
   (define fv-count (vector-length fields-value))
   (define next (alloc (+ fv-count 2)
-                      (vector->roots fields-value)
-                      '()))
+                      s
+                      (vector->roots fields-value)))
   (heap-set! (+ next 1) s)
   (for ([x (in-range 0 fv-count)])
     (heap-set! (+ next 2 x)
@@ -250,167 +250,6 @@
        (error 'alloc "no space"))
      (heap-set! 0 (+ next n))
      next]))
-
-;; copy live objects to older generation heap
-;; if old generation is full when copying live objects over
-;; trigger gc for old generation
-;; reset to-space, e.g. alloc-pointer set to 2 | mid
-(define (copy-live-to-older some-roots more-roots)
-  (copy/roots (get-root-set))
-  (copy/roots some-roots)
-  (copy/roots more-roots)
-  (case (heap-ref/check! 1)
-    [(left)
-     (copy/rest 2)
-     (update/pointers (+ 1 (2nd-gen-size)))
-     (for ([x (in-range 2 (mid))])
-       (heap-set! x 'free))
-     (heap-set! 0 2)]
-    [(right)
-     (copy/rest (mid))
-     (update/pointers (+ 1 (2nd-gen-size)))
-     (for ([x (in-range (mid) (1st-gen-size))])
-       (heap-set! x 'free))
-     (heap-set! 0 (mid))]))
-
-(define (update/pointers loc)
-  (cond
-    [(or (= loc (heap-size))
-         (equal? 'free (heap-ref/check! loc)))
-     (define start (2nd-gen-size))
-     (for ([i (in-range (+ 1 start) (heap-size))])
-       (heap-set! i 'free))
-     (heap-set! start (+ 1 start))]
-    [else
-     (define l (heap-ref/check! (+ loc 1)))
-     (case (heap-ref/check! l)
-       [(frwd)
-        (heap-set! (heap-ref/check! loc)
-                   (heap-ref/check! (+ l 1)))
-        (update/pointers (+ loc 2))]
-       [else (error 'update/pointers "wrong tag ~s at ~a" (heap-ref/check! loc) loc)])]))
-
-(define (copy/roots thing)
-  (cond
-    [(list? thing)
-     (for-each copy/roots thing)]
-    [(root? thing)
-     (set-root! thing (copy/loc (read-root thing)))]
-    [(number? thing)
-     (case (heap-ref/check! thing)
-       [(frwd) 
-        (define ptr (copy/loc (heap-ref/check! (+ 1 thing))))
-        (unless (void? ptr) (heap-set! (+ 1 thing) ptr))]
-       [(flat pair proc vector struct struct-instance)
-        (unless (2nd-gen? thing)
-          (error 'copy/roots "~s at ~a shouldn't be roots" (heap-ref/check! thing) thing))
-        thing]
-       [else 
-        (error 'copy/roots "wrong tag ~s at ~a when copying roots" (heap-ref/check! thing) thing)])]))
-
-(define (copy/loc loc)
-  (when (1st-gen? loc)
-    (case (heap-ref/check! loc)
-      [(frwd) (define l (heap-ref/check! (+ loc 1)))
-              (unless (2nd-gen? l)
-                (error 'copy/loc 
-                       "copied object at ~a should be at older generation" 
-                       l))
-              l]
-      [(flat) (define next (copy/alloc 2 #f #f))
-              (heap-set! next 'flat)
-              (heap-set! (+ next 1) (heap-ref/check! (+ loc 1)))
-              (heap-set! loc 'frwd)
-              (heap-set! (+ loc 1) next)
-              next]
-      [(pair) (define next (copy/alloc 3 
-                                       (heap-ref/check! (+ loc 1))
-                                       (heap-ref/check! (+ loc 2))))
-              (heap-set! next 'pair)
-              (heap-set! (+ next 1) (heap-ref/check! (+ loc 1)))
-              (heap-set! (+ next 2) (heap-ref/check! (+ loc 2)))
-              (heap-set! loc 'frwd)
-              (heap-set! (+ loc 1) next)
-              next]
-      [(proc) (define fv-count (heap-ref/check! (+ loc 2)))
-              (define free-vars (build-vector fv-count
-                                              (lambda (i)
-                                                (heap-ref/check! (+ loc 3 i)))))
-              (define next (copy/alloc (+ 3 fv-count)
-                                       (vector->roots free-vars)
-                                       '()))
-              (heap-set! next 'proc)
-              (heap-set! (+ next 1) (heap-ref/check! (+ loc 1)))
-              (heap-set! (+ next 2) (heap-ref/check! (+ loc 2)))
-              (for ([x (in-range fv-count)])
-                (heap-set! (+ next 3 x) (heap-ref/check! (+ loc 3 x))))
-              (heap-set! loc 'frwd)
-              (heap-set! (+ loc 1) next)
-              next]
-      [(vector) (define size (heap-ref/check! (+ loc 1)))
-                (define vars (build-vector size
-                                           (lambda (i)
-                                             (heap-ref/check! (+ loc 2 i)))))
-                (define next (copy/alloc (+ 2 size)
-                                         (vector->roots vars)
-                                         '()))
-                (heap-set! next 'vector)
-                (heap-set! (+ next 1) size)
-                (for ([x (in-range size)])
-                  (heap-set! (+ next 2 x) (heap-ref/check! (+ loc 2 x))))
-                (heap-set! loc 'frwd)
-                (heap-set! (+ loc 1) next)
-                next]
-      [(struct) (define next (copy/alloc 4 (heap-ref/check! (+ loc 2)) #f))
-                (heap-set! next 'struct)
-                (heap-set! (+ next 1) (heap-ref/check! (+ loc 1)))
-                (heap-set! (+ next 2) (heap-ref/check! (+ loc 2)))
-                (heap-set! (+ next 3) (heap-ref/check! (+ loc 3)))
-                (heap-set! loc 'frwd)
-                (heap-set! (+ loc 1) next)
-                next]
-      [(struct-instance) (define fields-number
-                           (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1)))))
-                         (define fields (build-vector fields-number
-                                                      (lambda (i)
-                                                        (heap-ref/check! (+ loc 2 i)))))
-                         (define next (copy/alloc (+ 2 fields-number)
-                                                  fields
-                                                  '()))
-                         (heap-set! next 'struct-instance)
-                         (heap-set! (+ next 1) (heap-ref/check! (+ loc 1)))
-                         (for ([x (in-range fields-number)])
-                           (heap-set! (+ next 2 x) (heap-ref/check! (+ loc 2 x))))
-                         (heap-set! loc 'frwd)
-                         (heap-set! (+ loc 1) next)
-                         next]
-      [else (error 'copy/loc "wrong tag at ~a" loc)])))
-
-(define (copy/rest loc)
-  (case (heap-ref/check! loc)
-    [(frwd)
-     (define l (heap-ref/check! (+ loc 1)))
-     (case (heap-ref/check! l)
-       [(flat) (copy/rest (+ loc 2))]
-       [(pair) (copy/rest (+ loc 3))]
-       [(proc) (copy/rest (+ loc 3 (heap-ref/check! (+ l 2))))]
-       [(vector) (copy/rest (+ loc 2 (heap-ref/check! (+ l 1))))]
-       [(struct) (copy/rest (+ loc 4))]
-       [(struct-instance) (copy/rest (+ loc 2 (heap-ref/check! (+ 3 (heap-ref/check! (+ l 1))))))])]
-    [(flat) (copy/loc loc)
-            (copy/rest (+ loc 2))]
-    [(pair) (copy/loc loc)
-            (copy/rest (+ loc 3))]
-    [(proc) (copy/loc loc)
-            (copy/rest (+ loc 3 (heap-ref/check! (+ loc 2))))]
-    [(vector) (copy/loc loc)
-              (copy/rest (+ loc 2 (heap-ref/check! (+ loc 1))))]
-    [(struct) (copy/loc loc)
-              (copy/rest (+ loc 4))]
-    [(struct-instance) (copy/loc loc)
-                       (copy/rest (+ loc 2 (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1))))))]
-    [(free) (void)]
-    [else (error 'copy/rest "wrong tag at ~a" loc)]))
 
 (define (find-free-space start size)
   (cond
@@ -582,25 +421,6 @@
   (forward/roots more-roots)
   (forward/pointers (+ 1 (2nd-gen-size))))
 
-;; semi-space-limit -> integer 
-;; find limit of current semi-heap
-(define (semi-space-limit)
-  (if (equal? (heap-ref/check! 1) 'left) (mid) (1st-gen-size)))
-
-;; semi-space-start
-(define (semi-space-start)
-  (if (equal? (heap-ref/check! 1) 'left) 2 (mid)))
-
-;; change-active-semi-space -> void
-(define (change-active-semi-space)
-  (case (heap-ref/check! 1)
-    [(left)
-     (heap-set! 1 'right)
-     (heap-set! 0 (mid))]
-    [(right)
-     (heap-set! 1 'left)
-     (heap-set! 0 2)]))
-
 ;; forward/roots : loc/(listof loc) -> loc
 ;; move every thing reachable from 'roots'
 ;; to the to space
@@ -686,14 +506,6 @@
        [else (error 'forward/loc "wrong tag ~s at ~a" (heap-ref/check! loc) loc)])]
     [else loc]))
 
-;; gc/alloc : num[size] -> loc
-(define (gc/alloc n)
-  (define addr (heap-ref/check! 0))
-  (unless (<= (+ addr n) (semi-space-limit))
-    (error 'gc/alloc "no space"))
-  (heap-set! 0 (+ addr n))
-  addr)
-
 (define (copy/alloc n some-roots more-roots)
   (define next (find-free-space (1st-gen-size) n))
   (cond
@@ -747,44 +559,15 @@
      (forward/ref new-addr)
      (forward/pointers (+ loc 2))]))
 
-;; free the from space 
-;; after moved all live objects and their offsprings 
-;; over to space
-(define (free-from-space)
-  (case (heap-ref/check! 1)
-    [(left)
-     (for ([i (in-range (mid) (1st-gen-size))])
-       (heap-set! i 'free))]
-    [(right)
-     (for ([i (in-range 2 (mid))])
-       (heap-set! i 'free))]))
-
 (define (free-1st-gen)
   (for ([i (in-range 2 (1st-gen-size))])
     (heap-set! i 'free))
   (heap-set! 0 2))
 
-(define (at-to-space? loc)
-  (case (heap-ref/check! 1)
-    [(left) (and (>= loc 2)
-                 (< loc (mid)))]
-    [(right) (and (>= loc (mid))
-                  (< loc (1st-gen-size)))]))
-
-(define (at-from-space? thing)
-  (cond
-    [(list? thing)
-     (ormap at-from-space? thing)]
-    [(root? thing)
-     (not (at-to-space? (read-root thing)))]
-    [(number? thing)
-     (not (at-to-space? thing))]
-    [(not thing)
-     thing]))
-
 (define (1st-gen? loc)
   (and (>= loc 2)
        (< loc (1st-gen-size))))
+
 (define (2nd-gen? loc)
   (and (>= loc (1st-gen-size))
        (< loc (2nd-gen-size))))
@@ -794,6 +577,7 @@
     (error 'heap-ref/check! "should be a location? at ~a" loc))
   (heap-ref loc))
 
+#|
 (print-only-errors #t)
 (define test-heap1 (make-vector 48 'f))
 ;; init-allocator
@@ -1153,3 +937,4 @@
               'free 'free 'free 'free
               'free 50 'free 'free
               'free 'free 'free 'free))
+|#
