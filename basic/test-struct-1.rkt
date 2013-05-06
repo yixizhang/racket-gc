@@ -5,6 +5,6 @@
 (require "test-struct-0.rkt")
 
 (define-struct (p t) (text))
-(define p-i (make-p 0 0 0 0 0))
+(define p-i (make-p 0 0 0 0))
 (s? p-i)
 (s-x p-i)

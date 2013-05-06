@@ -366,7 +366,7 @@
 ;; define-struct : number symbol (listof symbol) -> mutator-define functions ...
 (define-syntax (define-struct/offset stx)
   (syntax-case stx ()
-    [(_ parent-fields s (x ...))
+    [(_ parent-fields parent-struct s (x ...))
      (let* ([local-fields (syntax->list #'(x ...))]
             [fields (append (syntax-e #'parent-fields) local-fields)]
             [fields-num (length fields)]
@@ -383,7 +383,7 @@
                                      local-fields)])
          #`(begin
              (define struct:s 
-               (collector:alloc-struct 's #f #,fields-num))
+               (collector:alloc-struct 's parent-struct #,fields-num))
              (define (make-s #,@fields)
                (collector:alloc-struct-instance struct:s (vector #,@fields)))
              (define (s? a)
@@ -404,7 +404,7 @@
            (raise-syntax-error 'define-struct "expected an identifier" stx x)))
        #`(begin
            (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
-           (define-struct/offset #,(datum->syntax #f '()) s (f ...))))]
+           (define-struct/offset #,(datum->syntax #f '()) #f s (f ...))))]
     [(_ (s t) (f ...))
      (begin
        (unless (identifier? #'s)
@@ -415,10 +415,12 @@
        (for ([x (in-list (syntax->list #'(f ...)))])
          (unless (identifier? x)
            (raise-syntax-error 'define-struct "expected an identifier" stx x)))
-       (let ([parent-fields (define-struct-info-fields (syntax-local-value #'t))])
+       (let ([parent-fields (define-struct-info-fields (syntax-local-value #'t))]
+             [parent-struct (datum->syntax #'t (string->symbol
+                                                (format "struct:~a" (syntax-e #'t))))])
          #`(begin
              (define-syntax s #,(make-define-struct-info (append parent-fields (syntax->list #'(f ...)))))
-             (define-struct/offset #,parent-fields s (f ...)))))]))
+             (define-struct/offset #,parent-fields #,parent-struct s (f ...)))))]))
 
 ; Module Begin
 (define-for-syntax (allocator-setup-internal stx)
