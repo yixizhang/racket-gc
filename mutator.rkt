@@ -382,7 +382,7 @@
                                                                               (syntax-e x)))))
                                      local-fields)])
          #`(begin
-             (define struct:s 
+             (mutator-define struct:s 
                (collector:alloc-struct 's parent-struct #,fields-num))
              (define (make-s #,@fields)
                (collector:alloc-struct-instance struct:s (vector #,@fields)))
