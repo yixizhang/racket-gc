@@ -367,8 +367,8 @@
 (define-syntax (define-struct/offset stx)
   (syntax-case stx ()
     [(_ parent-fields s (x ...))
-     (let* ([fields (append (syntax-e #'parent-fields)
-                            (syntax->list #'(x ...)))]
+     (let* ([local-fields (syntax->list #'(x ...))]
+            [fields (append (syntax-e #'parent-fields) local-fields)]
             [fields-num (length fields)]
             [index-list (build-list fields-num values)])
        (with-syntax ([struct:s (datum->syntax #'s (string->symbol
@@ -380,14 +380,14 @@
                                                       (string->symbol (format "~a-~a"
                                                                               (syntax-e #'s)
                                                                               (syntax-e x)))))
-                                     fields)])
+                                     local-fields)])
          #`(begin
              (define struct:s 
                (collector:alloc-struct 's #f #,fields-num))
-             (define (make-s x ...)
-               (collector:alloc-struct-instance struct:s (vector x ...)))
+             (define (make-s #,@fields)
+               (collector:alloc-struct-instance struct:s (vector #,@fields)))
              (define (s? a)
-               (collector:struct-pred struct:s a))
+               (collector:alloc-flat (collector:struct-pred struct:s a)))
              #,@(for/list ([i index-list]
                            [f (in-list (syntax->list #'(s-f ...)))])
                   #`(define (#,f a)
@@ -402,10 +402,9 @@
        (for ([x (in-list (syntax->list #'(f ...)))])
          (unless (identifier? x)
            (raise-syntax-error 'define-struct "expected an identifier" stx x)))
-       (let ([parent-fields (datum->syntax #f '())])
-         #`(begin
-             (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
-             (define-struct/offset #,parent-fields s (f ...)))))]
+       #`(begin
+           (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
+           (define-struct/offset #,(datum->syntax #f '()) s (f ...))))]
     [(_ (s t) (f ...))
      (begin
        (unless (identifier? #'s)
