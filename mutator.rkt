@@ -703,7 +703,8 @@
     (loc/list->cons/loc sorted)))
 
 (define (mutator-make-vector length loc)
-  (collector:vector length loc))
+  (collector:vector (collector:deref length) 
+                    loc))
 (define (mutator-vector-length loc)
   (collector:alloc-flat (collector:vector-length loc)))
 (define (mutator-vector-ref loc number)
@@ -821,7 +822,7 @@
                        (define v (make-vector vlen 0))]
                       (for ([i (in-range vlen)])
                            (local [(define p (make-placeholder unset))]
-                                  (placeholder-set! (unwrap (collector:vector-ref loc i)))
+                                  (placeholder-set! p (unwrap (collector:vector-ref loc i)))
                                   (vector-set! v i p)))
                       (placeholder-set! ph v))]
               [else 
