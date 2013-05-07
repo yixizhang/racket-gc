@@ -1,9 +1,10 @@
 #lang plai/gc2/collector
 
 ;; configuration
-
-(define step-length 10) ;; step-length :: argument for how much work every gc step does
-(define heap-threshold "heap-threshold not initialized") ;; heap-threshold :: the portion of heap to detect if gc phase should be triggered
+;; preset work load for every GC step
+(define step-length 10)
+;; conservatism parameter
+(define heap-threshold "heap-threshold not initialized")
 
 ;; main functions
 
@@ -232,12 +233,12 @@
       (unless (<= (heap-ref 1) (heap-size)) (error 'alloc "> heap-size"))
       (case (heap-ref 0)
         [(not-in-gc) (when (>= (heap-ref 1) heap-threshold)
-                       (heap-set! 2 (+ n (heap-ref 2))) ;; start step count
+                       (heap-set! 2 (+ n (heap-ref 2)))
                        (traverse/roots (get-root-set))
                        (traverse/roots some-roots)
                        (traverse/roots more-roots)
                        (heap-set! 0 'mark-black!))]
-        [(mark-black!) (heap-set! 2 (+ n (heap-ref 2))) ;; step count
+        [(mark-black!) (heap-set! 2 (+ n (heap-ref 2)))
                        (traverse/roots-white (get-root-set))
                        (traverse/roots-white some-roots)
                        (traverse/roots-white more-roots)
@@ -246,8 +247,10 @@
                           (traverse/incre-mark (next/cont))]
                          [else (void)])]
         [else (error 'alloc "wrong gc state ~s" (heap-ref 0))])
-      (define loc (find-free-space next n))
-      (if loc loc (error 'alloc "incremental gc failed"))]
+      (let ([loc (find-free-space next n)])
+        (if loc
+            loc 
+            (error 'alloc "incremental gc failed")))]
     [else (error 'alloc "incremental gc failed")]))
 
 (define (find-free-space start size)
@@ -308,45 +311,54 @@
       [else
        (error 'mark-white! "unknown tag @ ~a" i)])))
 
-(define (free-white! i)
+(define (free/mark-white! i)
   (when (< i (heap-size))
     (case (heap-ref i)
-      [(pair) (free-white! (+ i 3))]
-      [(flat) (free-white! (+ i 2))]
-      [(proc) (free-white! (+ i 3 (heap-ref (+ i 2))))]
+      [(pair) (heap-set! i 'white-pair)
+              (free/mark-white! (+ i 3))]
+      [(flat) (heap-set! i 'white-flat)
+              (free/mark-white! (+ i 2))]
+      [(proc) (heap-set! i 'white-proc)
+              (free/mark-white! (+ i 3 (heap-ref (+ i 2))))]
+      [(vector) (heap-set! i 'white-vector)
+                (free/mark-white! (+ i 2 (heap-ref (+ i 1))))]
+      [(struct) (heap-set! i 'white-struct)
+                (free/mark-white! (+ i 4))]
+      [(struct-instance) (heap-set! i 'white-struct-instance)
+                         (free/mark-white! (+ i 2 (heap-ref (+ 3 (heap-ref (+ i 1))))))]
       [(white-pair cont) (heap-set! i 'free)
                          (heap-set! (+ i 1) 'free)
                          (heap-set! (+ i 2) 'free)
                          (heap-set! 1 (- (heap-ref 1) 3))
-                         (free-white! (+ i 3))]
+                         (free/mark-white! (+ i 3))]
       [(white-flat) (heap-set! i 'free)
                     (heap-set! (+ i 1) 'free)
                     (heap-set! 1 (- (heap-ref 1) 2))
-                    (free-white! (+ i 2))]
+                    (free/mark-white! (+ i 2))]
       [(white-proc) (define closure-size (heap-ref (+ i 2)))
                     (for ([dx (in-range 0 (+ closure-size 3))])
                       (heap-set! (+ i dx) 'free))
                     (heap-set! 1 (- (heap-ref 1) (+ 3 closure-size)))
-                    (free-white! (+ i 3 closure-size))]
+                    (free/mark-white! (+ i 3 closure-size))]
       [(white-vector) (define size (heap-ref (+ i 1)))
                       (for ([dx (in-range (+ size 2))])
                            (heap-set! (+ i dx) 'free))
                       (heap-set! 1 (- (heap-ref 1) (+ 2 size)))
-                      (free-white! (+ i 2 size))]
+                      (free/mark-white! (+ i 2 size))]
       [(white-struct) (heap-set! i 'free)
                       (heap-set! (+ i 1) 'free)
                       (heap-set! (+ i 2) 'free)
                       (heap-set! (+ i 3) 'free)
                       (heap-set! 1 (- (heap-ref 1) 4))
-                      (free-white! (+ i 4))]
+                      (free/mark-white! (+ i 4))]
       [(white-struct-instance) (heap-set! i 'free)
                                (heap-set! (+ i 1) 'free)
                                (define fields-size (heap-ref (+ 3 (heap-ref (+ i 1)))))
                                (for ([dx (in-range 0 fields-size)])
                                     (heap-set! (+ i dx) 'free))
                                (heap-set! 1 (- (heap-ref 1) (+ 2 fields-size)))
-                               (free-white! (+ i 2 fields-size))]
-      [(free) (free-white! (+ i 1))]
+                               (free/mark-white! (+ i 2 fields-size))]
+      [(free) (free/mark-white! (+ i 1))]
       [else (error 'free-white! "unknown tag ~s" (heap-ref i))])))
 
 (define (traverse/roots thing)
@@ -382,7 +394,7 @@
     [(= loc 0) (heap-set! 2 0)
                (heap-set! 3 0) ;; no need for check/cont-alloc
                (heap-set! 0 'free-white!)
-               (free-white! 4)
+               (free/mark-white! 4)
                (check/tag 4)
                (heap-set! 0 'not-in-gc)
                (heap-cont/check)]
@@ -558,12 +570,12 @@
 (define (check/tag loc)
   (when (< loc (heap-size))
     (case (heap-ref loc)
-      [(pair) (check/tag (+ loc 3))]
-      [(flat) (check/tag (+ loc 2))]
-      [(proc) (check/tag (+ loc 3 (heap-ref (+ loc 2))))]
-      [(vector) (check/tag (+ loc 2 (heap-ref (+ loc 1))))]
-      [(struct) (check/tag (+ loc 4))]
-      [(struct-instance) (check/tag (+ loc 2 (heap-ref (+ 3 (heap-ref (+ loc 1))))))]
+      [(white-pair) (check/tag (+ loc 3))]
+      [(white-flat) (check/tag (+ loc 2))]
+      [(white-proc) (check/tag (+ loc 3 (heap-ref (+ loc 2))))]
+      [(white-vector) (check/tag (+ loc 2 (heap-ref (+ loc 1))))]
+      [(white-struct) (check/tag (+ loc 4))]
+      [(white-struct-instance) (check/tag (+ loc 2 (heap-ref (+ 3 (heap-ref (+ loc 1))))))]
       [(free) (check/tag (+ loc 1))]
       [else (error 'check/tag "wrong tag at ~a" loc)])))
 
@@ -609,15 +621,12 @@
       (check/cont-alloc 3 (heap-ref (+ loc 2)))
       (heap-set! 3 (heap-ref (+ loc 2)))
       (heap-cont/check)
-      ;;(heap-set! loc 'free)
-      ;;(heap-set! (+ loc 1) 'free)
-      ;;(heap-set! (+ loc 2) 'free)
       loc]))
 
 (define (push/cont ptr)
   (mark-grey ptr)
   (case (heap-ref ptr)
-    [(pair flat proc) (void)]
+    [(pair flat proc vector strut struct-instance) (void)]
     [else
       (define loc (find-free-space 4 3))
       (define head (heap-ref 3))
@@ -647,6 +656,7 @@
   (<= (heap-ref 2) 0))
 
 ;; test for functions
+#|
 (print-only-errors #t)
 (define v1 (make-vector 24 'f))
 
@@ -691,3 +701,4 @@
                  (push/cont 4)
                  (find-free-space 4 3))
       9)
+|#
