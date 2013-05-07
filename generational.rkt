@@ -122,7 +122,7 @@
   (define next (alloc (+ fv-count 3)
                       fv-vars
                       '()))
-  (define free-vars (for/vector ([v (in-vector free-vars)])
+  (define updated-free-vars (for/vector ([v (in-vector free-vars)])
                       (track/loc v)))
   (when (and (= next 2)
              (need-forwarding-pointers? fv-vars))
@@ -132,7 +132,7 @@
   (heap-set! (+ next 2) fv-count)
   (for ([x (in-range 0 fv-count)])
     (heap-set! (+ next 3 x)
-               (vector-ref free-vars x)))
+               (vector-ref updated-free-vars x)))
   next)
 
 ;; gc:closure-code-ptr : loc -> heap-value
@@ -176,7 +176,10 @@
   next)
 
 (define (gc:vector? loc)
-  (equal? (heap-ref loc) 'vector))
+  (case (heap-ref/check! loc)
+    [(vector) #t]
+    [(frwd) (gc:vector? (heap-ref/check! (+ loc 1)))]
+    [else #f]))
 
 (define (gc:vector-length loc)
   (if (gc:vector? loc)
@@ -358,6 +361,14 @@
                             (define loc (heap-ref/check! (+ start 2 i)))
                             (when (2nd-gen? loc) (traverse/roots loc)))
                           (make-pointers-to-2nd-gen-roots (+ start 2 fields-count))]
+       [(frwd) (define loc (heap-ref/check! (+ start 1)))
+               (case (heap-ref/check! loc)
+                 [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
+                 [(pair) (make-pointers-to-2nd-gen-roots (+ start 3))]
+                 [(proc) (make-pointers-to-2nd-gen-roots (+ start 3 (heap-ref/check! (+ loc 2))))]
+                 [(vector) (make-pointers-to-2nd-gen-roots (+ start 2 (heap-ref/check! (+ loc 1))))]
+                 [(struct) (make-pointers-to-2nd-gen-roots (+ start 4))]
+                 [(struct-instance) (make-pointers-to-2nd-gen-roots (+ start 2 (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1))))))])]
        [(free) (void)]
        [else (error 'make-pointers-to-2nd-gen-roots "wrong tag at ~a" start)])]))
 
