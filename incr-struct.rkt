@@ -101,14 +101,14 @@
 
 (define (gc:alloc-flat fv)
   (define ptr (alloc 2 #f #f))
-  (heap-set! ptr 'flat)
+  (heap-set! ptr 'white-flat)
   (heap-set! (+ ptr 1) fv)
   (heap-cont/check)
   ptr)
 
 (define (gc:cons hd tl)
   (define ptr (alloc 3 hd tl))
-  (heap-set! ptr 'pair)
+  (heap-set! ptr 'white-pair)
   (heap-set! (+ ptr 1) hd)
   (heap-set! (+ ptr 2) tl)
   (heap-cont/check)
@@ -119,7 +119,7 @@
   (define next (alloc (+ fv-count 3)
                       (vector->roots free-vars)
                       '()))
-  (heap-set! next 'proc)
+  (heap-set! next 'white-proc)
   (heap-set! (+ next 1) code-ptr)
   (heap-set! (+ next 2) fv-count)
   (for ([x (in-range 0 fv-count)])
@@ -132,7 +132,7 @@
 ;; gc:vector : number loc -> loc
 (define (gc:vector length loc)
   (define next (alloc (+ length 2) #f #f))
-  (heap-set! next 'vector)
+  (heap-set! next 'white-vector)
   (heap-set! (+ next 1) length)
   (for ([i (in-range length)])
        (heap-set! (+ next 2 i) loc))
@@ -178,12 +178,17 @@
 ;; struct . name . parent/#f . number of fields
 (define (gc:alloc-struct name parent fields-count)
   (define next (alloc 4 parent #f))
-  (heap-set! next 'struct)
+  (heap-set! next 'white-struct)
   (heap-set! (+ next 1) name)
   (heap-set! (+ next 2) parent)
   (heap-set! (+ next 3) fields-count)
   (heap-cont/check)
   next)
+
+(define (struct? thing)
+  (or (equal? (heap-ref thing) 'struct)
+      (equal? (heap-ref thing) 'white-struct)
+      (equal? (heap-ref thing) 'grey-struct)))
 
 ;; gc:alloc-struct-instance : loc (vectorof loc) -> loc
 ;; struct-instance . struct . fields values
@@ -192,17 +197,17 @@
   (define next (alloc (+ fv-count 2)
                       (vector->roots fields-value)
                       '()))
+  (heap-set! next 'white-struct-instance)
   (heap-set! (+ next 1) s)
   (for ([x (in-range 0 fv-count)])
        (heap-set! (+ next 2 x)
                         (vector-ref fields-value x)))
-  (heap-set! next 'struct-instance)
   (heap-cont/check)
   next)
 
 ;; gc:struct-pred : loc loc -> true/false
 (define (gc:struct-pred s instance)
-  (and (equal? (heap-ref s) 'struct)
+  (and (struct? s)
        (gc:struct-pred-helper s (heap-ref (+ instance 1)))))
 
 ;; gc:struct-pred-helper : loc loc/#f -> true/false
@@ -227,19 +232,17 @@
       (unless (<= (heap-ref 1) (heap-size)) (error 'alloc "> heap-size"))
       (case (heap-ref 0)
         [(not-in-gc) (when (>= (heap-ref 1) heap-threshold)
-                       (heap-set! 0 'mark-white!)
                        (heap-set! 2 (+ n (heap-ref 2))) ;; start step count
-                       (mark-white! 4)
                        (traverse/roots (get-root-set))
                        (traverse/roots some-roots)
                        (traverse/roots more-roots)
                        (heap-set! 0 'mark-black!))]
         [(mark-black!) (heap-set! 2 (+ n (heap-ref 2))) ;; step count
+                       (traverse/roots-white (get-root-set))
                        (traverse/roots-white some-roots)
                        (traverse/roots-white more-roots)
                        (cond 
                          [(>= (heap-ref 2) step-length)
-                          ;;(traverse/roots (get-root-set))
                           (traverse/incre-mark (next/cont))]
                          [else (void)])]
         [else (error 'alloc "wrong gc state ~s" (heap-ref 0))])
@@ -263,7 +266,8 @@
          size)]
        [(vector grey-vector white-vector)
         (find-free-space
-          (+ start 2 (heap-ref (+ start 2))))]
+          (+ start 2 (heap-ref (+ start 2)))
+          size)]
        [(struct grey-struct white-struct) (find-free-space (+ start 4) size)]
        [(struct-instance grey-struct-instance white-struct-instance)
         (find-free-space
@@ -659,7 +663,6 @@
 (test (with-heap v1
                  (init-allocator)
                  (gc:alloc-flat 1)
-                 (mark-white! 4)
                  (push/cont 4)
                  v1)
       (vector 'not-in-gc 2 0 6
@@ -672,13 +675,12 @@
 (test (with-heap v1
                  (init-allocator)
                  (gc:alloc-flat 1)
-                 (mark-white! 4)
                  (push/cont 4)
                  (gc:cons 4 4)
                  v1)
       (vector 'not-in-gc 5 0 6
               'grey-flat 1 'cont 4
-              0 'pair 4 4
+              0 'white-pair 4 4
               'free 'free 'free 'free
               'free 'free 'free 'free
               'free 'free 'free 'free))
@@ -686,7 +688,6 @@
 (test (with-heap v1
                  (init-allocator)
                  (gc:alloc-flat 1)
-                 (mark-white! 4)
                  (push/cont 4)
                  (find-free-space 4 3))
       9)
