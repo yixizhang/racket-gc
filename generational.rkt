@@ -12,8 +12,6 @@
   (heap-set! table-start (+ table-start 1)))
 
 ;; 1st gen takes 1/4 of entire heap
-(define (mid) 
-  (+ 1 (round (* (heap-size) 1/8))))
 (define (1st-gen-size)
   (round (* (heap-size) 1/4)))
 (define (2nd-gen-size)
@@ -50,9 +48,15 @@
 ;; results from either gc:alloc-flat or gc:cons
 (define (gc:cons hd tl)
   (define ptr (alloc 3 hd tl))
+  (define head (track/loc hd))
+  (define tail (track/loc tl))
+  (when (and (= ptr 2)
+             (or (need-forwarding-pointers? hd)
+                 (need-forwarding-pointers? tl)))
+    (free-1st-gen))
   (heap-set! ptr 'pair)
-  (heap-set! (+ ptr 1) (track/loc hd))
-  (heap-set! (+ ptr 2) (track/loc tl))
+  (heap-set! (+ ptr 1) head)
+  (heap-set! (+ ptr 2) tail)
   ptr)
 
 ;; gc:first : loc -> loc
@@ -118,12 +122,17 @@
   (define next (alloc (+ fv-count 3)
                       fv-vars
                       '()))
+  (define free-vars (for/vector ([v (in-vector free-vars)])
+                      (track/loc v)))
+  (when (and (= next 2)
+             (need-forwarding-pointers? fv-vars))
+    (free-1st-gen))
   (heap-set! next 'proc)
   (heap-set! (+ next 1) code-ptr)
   (heap-set! (+ next 2) fv-count)
   (for ([x (in-range 0 fv-count)])
     (heap-set! (+ next 3 x)
-               (track/loc (vector-ref free-vars x))))
+               (vector-ref free-vars x)))
   next)
 
 ;; gc:closure-code-ptr : loc -> heap-value
@@ -155,11 +164,15 @@
 
 ;; vector related
 (define (gc:vector length loc)
-  (define next (alloc (+ length 2) #f #f))
+  (define next (alloc (+ length 2) loc #f))
+  (define l (track/loc loc))
+  (when (and (= next 2)
+             (need-forwarding-pointers? loc))
+    (free-1st-gen))
   (heap-set! next 'vector)
   (heap-set! (+ next 1) length)
   (for ([i (in-range length)])
-    (heap-set! (+ next 2 i) loc))
+    (heap-set! (+ next 2 i) l))
   next)
 
 (define (gc:vector? loc)
@@ -191,18 +204,30 @@
 ;; struct related
 (define (gc:alloc-struct name parent fields-count)
   (define next (alloc 4 parent #f))
+  (define p (and parent (track/loc parent)))
+  (when (and (= next 2)
+             (need-forwarding-pointers? parent))
+    (free-1st-gen))
   (heap-set! next 'struct)
   (heap-set! (+ next 1) name)
-  (heap-set! (+ next 2) parent)
+  (heap-set! (+ next 2) p)
   (heap-set! (+ next 3) fields-count)
   next)
 
 (define (gc:alloc-struct-instance s fields-value)
   (define fv-count (vector-length fields-value))
+  (define fv-roots (vector->roots fields-value))
   (define next (alloc (+ fv-count 2)
                       s
-                      (vector->roots fields-value)))
-  (heap-set! (+ next 1) s)
+                      fv-roots))
+  (define ss (track/loc s))
+  (define fields (for/vector ([v (in-vector fields-value)])
+                   (track/loc v)))
+  (when (and (= next 2)
+             (or (need-forwarding-pointers? s)
+                 (need-forwarding-pointers? fv-roots)))
+    (free-1st-gen))
+  (heap-set! (+ next 1) ss)
   (for ([x (in-range 0 fv-count)])
     (heap-set! (+ next 2 x)
                (vector-ref fields-value x)))
@@ -244,12 +269,21 @@
      addr]
     [else
      (collect-garbage some-roots more-roots)
-     (free-1st-gen)
-     (define next (heap-ref/check! 0))
-     (unless (<= (+ next n) (1st-gen-size))
+     (unless (or (need-forwarding-pointers? some-roots)
+                 (need-forwarding-pointers? more-roots))
+       (free-1st-gen))
+     (heap-set! 0 2)
+     (unless (<= (+ 2 n) (1st-gen-size))
        (error 'alloc "no space"))
-     (heap-set! 0 (+ next n))
-     next]))
+     (heap-set! 0 (+ 2 n))
+     2]))
+
+(define (need-forwarding-pointers? thing)
+  (cond
+    [(list? thing) (ormap 1st-gen? thing)]
+    [(root? thing) (1st-gen? (read-root thing))]
+    [(number? thing) (1st-gen? thing)]
+    [else thing]))
 
 (define (find-free-space start size)
   (cond
@@ -561,8 +595,7 @@
 
 (define (free-1st-gen)
   (for ([i (in-range 2 (1st-gen-size))])
-    (heap-set! i 'free))
-  (heap-set! 0 2))
+    (heap-set! i 'free)))
 
 (define (1st-gen? loc)
   (and (>= loc 2)
