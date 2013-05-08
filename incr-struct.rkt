@@ -3,13 +3,10 @@
 ;; configuration
 ;; preset work load for every GC step
 (define step-length 10)
-;; conservatism parameter
-(define heap-threshold "heap-threshold not initialized")
 
 ;; main functions
 
 (define (init-allocator)
-  (set! heap-threshold (round (* (heap-size) 1/2)))
   (heap-set! 0 'not-in-gc) ;; gc state :: not-in-gc, mark-white!, mark-black!, free-white!
   (heap-set! 1 0) ;; bit for non-free-space
   (heap-set! 2 0) ;; bit for step within gc round
@@ -230,23 +227,10 @@
   (cond
     [next 
       (heap-set! 1 (+ n (heap-ref 1)))
-      (unless (<= (heap-ref 1) (heap-size)) (error 'alloc "> heap-size"))
-      (case (heap-ref 0)
-        [(not-in-gc) (when (>= (heap-ref 1) heap-threshold)
-                       (heap-set! 2 (+ n (heap-ref 2)))
-                       (traverse/roots (get-root-set))
-                       (traverse/roots some-roots)
-                       (traverse/roots more-roots)
-                       (heap-set! 0 'mark-black!))]
-        [(mark-black!) (heap-set! 2 (+ n (heap-ref 2)))
-                       (traverse/roots-white (get-root-set))
-                       (traverse/roots-white some-roots)
-                       (traverse/roots-white more-roots)
-                       (cond 
-                         [(>= (heap-ref 2) step-length)
-                          (traverse/incre-mark (next/cont))]
-                         [else (void)])]
-        [else (error 'alloc "wrong gc state ~s" (heap-ref 0))])
+      (heap-set! 2 (+ n (heap-ref 2)))
+      (traverse/roots-white (get-root-set))
+      (when (>= (heap-ref 2) step-length)
+        (traverse/incre-mark (next/cont)))
       (let ([loc (find-free-space next n)])
         (if loc
             loc 
