@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../generational.rkt" 400)
+(allocator-setup "../hybrid.rkt" 400)
 (define (build-one) (let* ((x0 #f) (x1 empty)) x1))
 (define (traverse-one x1) (empty? x1))
 (define (trigger-gc n)
