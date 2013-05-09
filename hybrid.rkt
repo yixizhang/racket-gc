@@ -208,7 +208,12 @@
   (unless (gc:vector? loc)
     (error 'gc:vector-set! "non vector @ ~s" loc))
   (cond 
-    [(< number (gc:vector-length loc)) (heap-set! (+ loc 2 number) thing)]
+    [(< number (gc:vector-length loc)) 
+     (begin
+       (heap-set! (+ loc 2 number) thing)
+       (when (and (2nd-gen? loc)
+                  (1st-gen? thing))
+         (table/alloc (+ loc 2 number) thing)))]
     [else (error 'gc:vector-set! 
                  "vector @ ~s index ~s out of range"
                  loc number)]))
@@ -434,8 +439,10 @@
     [(equal? 'free (heap-ref/check! loc)) (void)]
     [else
      (define new-addr (forward/loc (heap-ref/check! (+ loc 1))))
-     (heap-set! (+ loc 1) new-addr)
+     (heap-set! (heap-ref/check! loc) new-addr)
      (forward/ref new-addr)
+     (heap-set! loc 'free)
+     (heap-set! (+ loc 1) 'free)
      (forward/pointers (+ loc 2))]))
 
 (define (free-1st-gen)
@@ -471,7 +478,7 @@
          size)]
        [(vector grey-vector white-vector)
         (find-free-space
-          (+ start 2 (heap-ref (+ start 2)))
+          (+ start 2 (heap-ref (+ start 1)))
           size)]
        [(struct grey-struct white-struct) (find-free-space (+ start 4) size)]
        [(struct-instance grey-struct-instance white-struct-instance)
@@ -880,8 +887,44 @@
 (define (step/finished?)
   (<= (heap-ref step-count-word) 0))
 
-#|
 (print-only-errors #t)
+;; test init
+(define (test-init heap-size)
+  (set! 1st-gen-size (round (* heap-size 1/4)))
+  (set! 2nd-gen-size (round (* heap-size 7/8)))
+  (set! 2nd-gen-start (+ 4 1st-gen-size))
+  (set! status-word 1st-gen-size)
+  (set! volume-word (+ 1 1st-gen-size))
+  (set! step-count-word (+ 2 1st-gen-size))
+  (set! tracing-head-word (+ 3 1st-gen-size))
+  (set! table-start-word 2nd-gen-size)
+  (heap-set! status-word 'not-in-gc)
+  (heap-set! volume-word 0)
+  (heap-set! step-count-word 0)
+  (heap-set! tracing-head-word 0)
+  (heap-set! table-start-word (+ table-start-word 1)))
+;; test for forward/pointers
+(let ([test-heap (vector 2 'left 'flat 2
+                         'free 'free 'free 'free
+                         'not-in-gc 0 0 0
+                         'vector 1 2 'free
+                         'free 'free 'free 'free
+                         'free 'free 'free 'free
+                         'free 'free 'free 'free
+                         29 14 2 'free)])
+  (test (with-heap test-heap
+                   (test-init 32)
+                   (forward/pointers 29)
+                   test-heap)
+        (vector 2 'left 'frwd 15
+                'free 'free 'free 'free
+                'not-in-gc 2 2 0
+                'vector 1 15 'flat
+                2 'free 'free 'free
+                'free 'free 'free 'free
+                'free 'free 'free 'free
+                29 'free 'free 'free)))
+#|
 (define test-heap1 (make-vector 48 'f))
 ;; init-allocator
 (test (with-heap test-heap1
