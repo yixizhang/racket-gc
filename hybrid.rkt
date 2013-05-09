@@ -1,31 +1,33 @@
 #lang plai/gc2/collector
 
-;; 2nd generation incremental gc config
 (define step-length 10)
+(define 1st-gen-size "size of young generation")
+(define 2nd-gen-size "size of old generation")
+(define 2nd-gen-start "start position to allocate objects in old generation")
+(define status-word "current phase of old generation incremental gc")
+(define volume-word "current total size of objects in old generation")
+(define step-count-word "work count for each tracing round")
+(define tracing-head-word "head of tracing tree")
+(define table-start-word "start position of table for cross-generation pointers")
 
-;; init-allocator : -> void
-;; 2 pointers : allocation pointer
-;;              active-semi-space pointer
 (define (init-allocator)
   (heap-set! 0 2) ;; allocation pointer
   (heap-set! 1 'left) ;; active-semi-space : left -> left side, right -> right side
   (for ([i (in-range 2 (heap-size))])
     (heap-set! i 'free))
-  (heap-set! (1st-gen-size) 'not-in-gc)
-  (heap-set! (+ 1 (1st-gen-size)) 0)
-  (heap-set! (+ 2 (1st-gen-size)) 0)
-  (heap-set! (+ 3 (1st-gen-size)) 0)
-  (define table-start (round (* (heap-size) 7/8)))
-  (heap-set! table-start (+ table-start 1)))
-
-;; 1st gen takes 1/4 of entire heap
-(define (1st-gen-size)
-  (round (* (heap-size) 1/4)))
-(define (2nd-gen-size)
-  (round (* (heap-size) 7/8)))
-(define (2nd-gen-start) (+ 4 (1st-gen-size)))
-(define (capacity-word) (+ 1 (1st-gen-size)))
-(define (count-word) (+ 2 (1st-gen-size)))
+  (set! 1st-gen-size (round (* (heap-size) 1/4)))
+  (set! 2nd-gen-size (round (* (heap-size) 7/8)))
+  (set! 2nd-gen-start (+ 4 1st-gen-size))
+  (set! status-word 1st-gen-size)
+  (set! volume-word (+ 1 1st-gen-size))
+  (set! step-count-word (+ 2 1st-gen-size))
+  (set! tracing-head-word (+ 3 1st-gen-size))
+  (set! table-start-word 2nd-gen-size)
+  (heap-set! status-word 'not-in-gc)
+  (heap-set! volume-word 0)
+  (heap-set! step-count-word 0)
+  (heap-set! tracing-head-word 0)
+  (heap-set! table-start-word (+ table-start-word 1)))
 
 ;; gc:deref : loc -> heap-value
 ;; must signal an error if fl-loc doesn't point to a flat value
@@ -267,20 +269,20 @@
   (heap-ref (+ instance 2 index)))
 
 (define (table/alloc pointer target)
-  (define next (heap-ref/check! (2nd-gen-size)))
+  (define next (heap-ref/check! table-start-word))
   (cond
     [(>= (+ next 2) (heap-size))
      (error 'table/alloc "no space for indirection table")]
     [else
      (heap-set! next pointer)
      (heap-set! (+ next 1) target)
-     (heap-set! (2nd-gen-size) (+ next 2))]))
+     (heap-set! table-start-word (+ next 2))]))
 
 ;; alloc : number[size] roots roots -> loc
 (define (alloc n some-roots more-roots)
   (define addr (heap-ref/check! 0))
   (cond 
-    [(<= (+ addr n) (1st-gen-size))
+    [(<= (+ addr n) 1st-gen-size)
      (heap-set! 0 (+ addr n))
      addr]
     [else
@@ -289,7 +291,7 @@
                  (need-forwarding-pointers? more-roots))
        (free-1st-gen))
      (heap-set! 0 2)
-     (unless (<= (+ 2 n) (1st-gen-size))
+     (unless (<= (+ 2 n) 1st-gen-size)
        (error 'alloc "no space"))
      (heap-set! 0 (+ 2 n))
      2]))
@@ -306,7 +308,7 @@
   (forward/roots (get-root-set))
   (forward/roots some-roots)
   (forward/roots more-roots)
-  (forward/pointers (+ 1 (2nd-gen-size))))
+  (forward/pointers (+ 1 table-start-word)))
 
 ;; forward/roots : loc/(listof loc) -> loc
 ;; move every thing reachable from 'roots'
@@ -437,16 +439,16 @@
      (forward/pointers (+ loc 2))]))
 
 (define (free-1st-gen)
-  (for ([i (in-range 2 (1st-gen-size))])
+  (for ([i (in-range 2 1st-gen-size)])
     (heap-set! i 'free)))
 
 (define (1st-gen? loc)
   (and (>= loc 2)
-       (< loc (1st-gen-size))))
+       (< loc 1st-gen-size)))
 
 (define (2nd-gen? loc)
-  (and (>= loc (1st-gen-size))
-       (< loc (2nd-gen-size))))
+  (and (>= loc 1st-gen-size)
+       (< loc 2nd-gen-size)))
 
 (define (heap-ref/check! loc)
   (unless (number? loc)
@@ -455,7 +457,7 @@
 
 (define (find-free-space start size)
   (cond
-    [(= start (2nd-gen-size)) #f]
+    [(= start 2nd-gen-size) #f]
     [else
      (case (heap-ref start)
        [(free) (if (n-free-blocks? start size)
@@ -482,7 +484,7 @@
 (define (n-free-blocks? start size)
   (cond
     [(= size 0) #t]
-    [(= start (2nd-gen-size)) #f]
+    [(= start 2nd-gen-size) #f]
     [else 
      (and (eq? 'free (heap-ref/check! start))
           (n-free-blocks? (+ start 1)
@@ -490,7 +492,7 @@
 
 (define (make-pointers-to-2nd-gen-roots start)
   (cond
-    [(= start (1st-gen-size))
+    [(= start 1st-gen-size)
      (void)]
     [else
      (case (heap-ref/check! start)
@@ -534,16 +536,16 @@
        [else (error 'make-pointers-to-2nd-gen-roots "wrong tag at ~a" start)])]))
 
 (define (copy/alloc n some-roots more-roots)
-  (define next (find-free-space (2nd-gen-start) n))
+  (define next (find-free-space 2nd-gen-start n))
   (cond
     [next
-      (heap-set! (+ 1 (1st-gen-size)) (+ n (heap-ref (+ 1 (1st-gen-size)))))
-      (heap-set! (+ 2 (1st-gen-size)) (+ n (heap-ref (+ 2 (1st-gen-size)))))
+      (heap-set! volume-word (+ n (heap-ref volume-word)))
+      (heap-set! step-count-word (+ n (heap-ref step-count-word)))
       (traverse/roots-white (get-root-set))
       ;; scan young generation for pointers to be roots
       ;; should be less frequent
       (make-pointers-to-2nd-gen-roots 2)
-      (when (>= (heap-ref (+ 2 (1st-gen-size))) step-length)
+      (when (>= (heap-ref step-count-word) step-length)
         (traverse/incre-mark (next/cont)))
       (let ([loc (find-free-space next n)])
         (if loc
@@ -564,7 +566,7 @@
        (push/cont thing))]))
 
 (define (free/mark-white! i)
-  (when (< i (2nd-gen-size))
+  (when (< i 2nd-gen-size)
     (case (heap-ref i)
       [(pair) (heap-set! i 'white-pair)
               (free/mark-white! (+ i 3))]
@@ -581,34 +583,34 @@
       [(white-pair cont) (heap-set! i 'free)
                          (heap-set! (+ i 1) 'free)
                          (heap-set! (+ i 2) 'free)
-                         (heap-set! (capacity-word) (- (heap-ref (capacity-word)) 3))
+                         (heap-set! volume-word (- (heap-ref volume-word) 3))
                          (free/mark-white! (+ i 3))]
       [(white-flat) (heap-set! i 'free)
                     (heap-set! (+ i 1) 'free)
-                    (heap-set! (capacity-word) (- (heap-ref (capacity-word)) 2))
+                    (heap-set! volume-word (- (heap-ref volume-word) 2))
                     (free/mark-white! (+ i 2))]
       [(white-proc) (define closure-size (heap-ref (+ i 2)))
                     (for ([dx (in-range 0 (+ closure-size 3))])
                       (heap-set! (+ i dx) 'free))
-                    (heap-set! (capacity-word) (- (heap-ref (capacity-word)) (+ 3 closure-size)))
+                    (heap-set! volume-word (- (heap-ref volume-word) (+ 3 closure-size)))
                     (free/mark-white! (+ i 3 closure-size))]
       [(white-vector) (define size (heap-ref (+ i 1)))
                       (for ([dx (in-range (+ size 2))])
                            (heap-set! (+ i dx) 'free))
-                      (heap-set! (capacity-word) (- (heap-ref (capacity-word)) (+ 2 size)))
+                      (heap-set! volume-word (- (heap-ref volume-word) (+ 2 size)))
                       (free/mark-white! (+ i 2 size))]
       [(white-struct) (heap-set! i 'free)
                       (heap-set! (+ i 1) 'free)
                       (heap-set! (+ i 2) 'free)
                       (heap-set! (+ i 3) 'free)
-                      (heap-set! (capacity-word) (- (heap-ref (capacity-word)) 4))
+                      (heap-set! volume-word (- (heap-ref volume-word) 4))
                       (free/mark-white! (+ i 4))]
       [(white-struct-instance) (heap-set! i 'free)
                                (heap-set! (+ i 1) 'free)
                                (define fields-size (heap-ref (+ 3 (heap-ref (+ i 1)))))
                                (for ([dx (in-range 0 fields-size)])
                                     (heap-set! (+ i dx) 'free))
-                               (heap-set! (capacity-word) (- (heap-ref (capacity-word)) (+ 2 fields-size)))
+                               (heap-set! volume-word (- (heap-ref volume-word) (+ 2 fields-size)))
                                (free/mark-white! (+ i 2 fields-size))]
       [(free) (free/mark-white! (+ i 1))]
       [else (error 'free-white! "unknown tag ~s" (heap-ref i))])))
@@ -618,12 +620,12 @@
               (= loc 0))
     (error 'traverse/incre-mark "not cont at ~a" loc))
   (cond
-    [(= loc 0) (heap-set! (+ 2 (1st-gen-size)) 0)
-               (heap-set! (+ 3 (1st-gen-size)) 0) ;; no need for check/cont-alloc
-               (heap-set! (1st-gen-size) 'free/mark-white!)
-               (free/mark-white! (+ 4 (1st-gen-size)))
-               (check/tag (+ 4 (1st-gen-size)))
-               (heap-set! (1st-gen-size) 'not-in-gc)
+    [(= loc 0) (heap-set! step-count-word 0)
+               (heap-set! tracing-head-word 0)
+               (heap-set! status-word 'free/mark-white!)
+               (free/mark-white! 2nd-gen-start)
+               (check/tag 2nd-gen-start)
+               (heap-set! status-word 'not-in-gc)
                (heap-cont/check)]
     [else (define ptr (heap-ref (+ loc 1)))
           (case (heap-ref ptr)
@@ -718,20 +720,20 @@
     [(pair flat proc struct struct-instance grey-pair grey-flat grey-proc grey-struct grey-struct-instance cont) (void)]))
 
 (define (heap-cont/check)
-  (check/cont (+ 4 (1st-gen-size)))
-  (heap-check (+ 4 (1st-gen-size))))
+  (check/cont 2nd-gen-start)
+  (heap-check 2nd-gen-start))
 
 ;; check what allocated to cont
 (define (check/cont-alloc loc thing)
   (cond
-    [(= loc (+ 3 (1st-gen-size)))
+    [(= loc tracing-head-word)
      (unless (or (equal? (heap-ref thing) 'cont)
                  (= thing 0))
        (error 'check/cont-alloc "not a cont at location ~a" thing))]
     [else (error 'check/cont-alloc "meant to check location 3")]))
 
 (define (heap-check loc)
-  (when (< loc (2nd-gen-size))
+  (when (< loc 2nd-gen-size)
     (case (heap-ref loc)
       [(pair) 
        (if (or (white? (heap-ref (+ loc 1)))
@@ -791,7 +793,7 @@
       [else (error 'check "unknown tag @ ~a" loc)])))
 
 (define (check/tag loc)
-  (when (< loc (2nd-gen-size))
+  (when (< loc 2nd-gen-size)
     (case (heap-ref loc)
       [(white-pair) (check/tag (+ loc 3))]
       [(white-flat) (check/tag (+ loc 2))]
@@ -803,7 +805,7 @@
       [else (error 'check/tag "wrong tag at ~a" loc)])))
 
 (define (check/cont loc)
-  (when (< loc (2nd-gen-size))
+  (when (< loc 2nd-gen-size)
     (case (heap-ref loc)
       [(pair white-pair grey-pair) (check/cont (+ loc 3))]
       [(flat white-flat grey-flat) (check/cont (+ loc 2))]
@@ -837,12 +839,12 @@
     [else false]))
 
 (define (next/cont)
-  (define loc (heap-ref (+ 3 (1st-gen-size))))
+  (define loc (heap-ref tracing-head-word))
   (cond
     [(= loc 0) 0]
     [else
-      (check/cont-alloc (+ 3 (1st-gen-size)) (heap-ref (+ loc 2)))
-      (heap-set! (+ 3 (1st-gen-size)) (heap-ref (+ loc 2)))
+      (check/cont-alloc tracing-head-word (heap-ref (+ loc 2)))
+      (heap-set! tracing-head-word (heap-ref (+ loc 2)))
       (heap-cont/check)
       loc]))
 
@@ -851,18 +853,18 @@
   (case (heap-ref ptr)
     [(pair flat proc vector strut struct-instance) (void)]
     [else
-      (define loc (find-free-space (+ 4 (1st-gen-size)) 3))
-      (define head (heap-ref (+ 3 (1st-gen-size))))
+      (define loc (find-free-space 2nd-gen-start 3))
+      (define head (heap-ref tracing-head-word))
       (heap-set! loc 'cont)
       (heap-set! (+ loc 1) ptr)
       (heap-set! (+ loc 2) head)
-      (check/cont-alloc (+ 3 (1st-gen-size)) loc)
-      (heap-set! (+ 3 (1st-gen-size)) loc)
+      (check/cont-alloc tracing-head-word loc)
+      (heap-set! tracing-head-word loc)
       (heap-cont/check)]))
 
 (define (continue/incre-mark)
   (if (step/finished?)
-    (heap-set! (+ 2 (1st-gen-size)) 0)
+    (heap-set! step-count-word 0)
     (traverse/incre-mark (next/cont))))
 
 (define (clean/cont loc)
@@ -872,11 +874,11 @@
   (heap-cont/check))
 
 (define (step/count n)
-  (heap-set! (count-word) (- (heap-ref (count-word)) n))
+  (heap-set! step-count-word (- (heap-ref step-count-word) n))
   (heap-cont/check))
 
 (define (step/finished?)
-  (<= (heap-ref (+ 2 (1st-gen-size))) 0))
+  (<= (heap-ref step-count-word) 0))
 
 #|
 (print-only-errors #t)
