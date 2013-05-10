@@ -307,10 +307,24 @@
 
 ;; collect-garbage : roots roots -> void
 (define (collect-garbage some-roots more-roots)
-  (forward/roots (get-root-set))
-  (forward/roots some-roots)
-  (forward/roots more-roots)
+  (make-pointers-to-2nd-gen-roots 0)
+  (traverse/roots (get-root-set))
+  (traverse/roots some-roots)
+  (traverse/roots more-roots)
   (forward/pointers (+ 1 table-start-word)))
+
+(define (traverse/roots thing)
+  (cond
+    [(list? thing)
+     (for-each traverse/roots thing)]
+    [(root? thing)
+     (cond
+       [(1st-gen? (read-root thing)) (forward/roots thing)]
+       [else (trace/roots-iff-white thing)])]
+    [(number? thing)
+     (cond
+       [(1st-gen? thing) (forward/ref (forward/loc thing))]
+       [else (when (white? thing) (push/cont thing))])]))
 
 ;; forward/roots : loc/(listof loc) -> loc
 ;; move every thing reachable from 'roots'
@@ -334,7 +348,7 @@
     [(1st-gen? loc)
      (case (heap-ref/check! loc)
        [(flat) (define new-addr (copy/alloc 2 #f #f))
-               (heap-set! new-addr 'white-flat)
+               (heap-set! new-addr 'flat)
                (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1))) 
                (heap-set! loc 'frwd)
                (heap-set! (+ loc 1) new-addr)
@@ -342,7 +356,7 @@
        [(pair) (define new-addr (copy/alloc 3
                                             (heap-ref/check! (+ loc 1))
                                             (heap-ref/check! (+ loc 2))))
-               (heap-set! new-addr 'white-pair)
+               (heap-set! new-addr 'pair)
                (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
                (heap-set! (+ new-addr 2) (track/loc (heap-ref/check! (+ loc 2))))
                (heap-set! loc 'frwd)
@@ -353,7 +367,7 @@
                                                (lambda (i)
                                                  (heap-ref/check! (+ loc 3 i)))))
                (define new-addr (copy/alloc length free-vars '()))
-               (heap-set! new-addr 'white-proc)
+               (heap-set! new-addr 'proc)
                (heap-set! (+ 1 new-addr) (heap-ref/check! (+ 1 loc)))
                (heap-set! (+ 2 new-addr) (heap-ref/check! (+ 2 loc)))
                (for ([x (in-range 3 length)])
@@ -366,7 +380,7 @@
                                             (lambda (i)
                                               (heap-ref/check! (+ loc 2 i)))))
                  (define new-addr (copy/alloc (+ 2 var-count) vars '()))
-                 (heap-set! new-addr 'white-vector)
+                 (heap-set! new-addr 'vector)
                  (heap-set! (+ 1 new-addr) (heap-ref/check! (+ loc 1)))
                  (for ([x (in-range var-count)])
                    (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
@@ -374,7 +388,7 @@
                  (heap-set! (+ loc 1) new-addr)
                  new-addr]
        [(struct) (define new-addr (copy/alloc 4 (heap-ref/check! (+ loc 2)) #f))
-                 (heap-set! new-addr 'white-struct)
+                 (heap-set! new-addr 'struct)
                  (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1)))
                  (define parent (heap-ref/check! (+ loc 2)))
                  (heap-set! (+ new-addr 2) (and parent (track/loc parent)))
@@ -387,7 +401,7 @@
                                                      (lambda (i)
                                                        (heap-ref/check! (+ loc 2 i)))))
                           (define new-addr (copy/alloc (+ 2 var-count) vars '()))
-                          (heap-set! new-addr 'white-struct-instance)
+                          (heap-set! new-addr 'struct-instance)
                           (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
                           (for ([x (in-range var-count)])
                             (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
@@ -551,10 +565,7 @@
       (heap-set! volume-word (+ n (heap-ref volume-word)))
       (heap-set! step-count-word (+ n (heap-ref step-count-word)))
       (when (>= (heap-ref step-count-word) step-length)
-        (begin
-          (trace/roots-iff-white (get-root-set))
-          (make-pointers-to-2nd-gen-roots 0)
-          (traverse/incre-mark (next/cont))))
+        (traverse/incre-mark (next/cont)))
       (let ([loc (find-free-space next 2nd-gen-size n)])
         (if loc
           loc
@@ -908,7 +919,7 @@
 (let ([test-heap (vector 2 'left 'flat 2
                          'free 'free 'free 'free
                          'not-in-gc 0 0 0
-                         'white-vector 1 2 'free
+                         'vector 1 2 'free
                          'free 'free 'free 'free
                          'free 'free 'free 'free
                          'free 'free 'free 'free
@@ -920,7 +931,7 @@
         (vector 2 'left 'frwd 15
                 'free 'free 'free 'free
                 'not-in-gc 2 2 0
-                'white-vector 1 15 'white-flat
+                'vector 1 15 'flat
                 2 'free 'free 'free
                 'free 'free 'free 'free
                 'free 'free 'free 'free
