@@ -11,9 +11,7 @@
 (define table-start-word "start position of table for cross-generation pointers")
 
 (define (init-allocator)
-  (heap-set! 0 2) ;; allocation pointer
-  (heap-set! 1 'left) ;; active-semi-space : left -> left side, right -> right side
-  (for ([i (in-range 2 (heap-size))])
+  (for ([i (in-range 0 (heap-size))])
     (heap-set! i 'free))
   (set! 1st-gen-size (round (* (heap-size) 1/4)))
   (set! 2nd-gen-size (round (* (heap-size) 7/8)))
@@ -59,7 +57,7 @@
   (define ptr (alloc 3 hd tl))
   (define head (track/loc hd))
   (define tail (track/loc tl))
-  (when (and (= ptr 2)
+  (when (and (= ptr 0)
              (or (need-forwarding-pointers? hd)
                  (need-forwarding-pointers? tl)))
     (free-1st-gen))
@@ -133,7 +131,7 @@
                       '()))
   (define updated-free-vars (for/vector ([v (in-vector free-vars)])
                       (track/loc v)))
-  (when (and (= next 2)
+  (when (and (= next 0)
              (need-forwarding-pointers? fv-vars))
     (free-1st-gen))
   (heap-set! next 'proc)
@@ -175,7 +173,7 @@
 (define (gc:vector length loc)
   (define next (alloc (+ length 2) loc #f))
   (define l (track/loc loc))
-  (when (and (= next 2)
+  (when (and (= next 0)
              (need-forwarding-pointers? loc))
     (free-1st-gen))
   (heap-set! next 'vector)
@@ -222,7 +220,7 @@
 (define (gc:alloc-struct name parent fields-count)
   (define next (alloc 4 parent #f))
   (define p (and parent (track/loc parent)))
-  (when (and (= next 2)
+  (when (and (= next 0)
              (need-forwarding-pointers? parent))
     (free-1st-gen))
   (heap-set! next 'struct)
@@ -277,7 +275,10 @@
   (define next (heap-ref/check! table-start-word))
   (cond
     [(>= (+ next 2) (heap-size))
-     (error 'table/alloc "no space for indirection table")]
+     (forward/pointers (+ 1 table-start-word))
+     (heap-set! (+ 1 table-start-word) pointer)
+     (heap-set! (+ 2 table-start-word) target)
+     (heap-set! table-start-word (+ 3 table-start-word))]
     [else
      (heap-set! next pointer)
      (heap-set! (+ next 1) target)
@@ -285,21 +286,17 @@
 
 ;; alloc : number[size] roots roots -> loc
 (define (alloc n some-roots more-roots)
-  (define addr (heap-ref/check! 0))
+  (define addr (find-free-space 0 1st-gen-size n))
   (cond 
-    [(<= (+ addr n) 1st-gen-size)
-     (heap-set! 0 (+ addr n))
-     addr]
+    [addr addr]
     [else
      (collect-garbage some-roots more-roots)
      (unless (or (need-forwarding-pointers? some-roots)
                  (need-forwarding-pointers? more-roots))
        (free-1st-gen))
-     (heap-set! 0 2)
-     (unless (<= (+ 2 n) 1st-gen-size)
-       (error 'alloc "no space"))
-     (heap-set! 0 (+ 2 n))
-     2]))
+     (unless (<= (+ 0 n) 1st-gen-size)
+       (error 'alloc "object is larget than young generation"))
+     0]))
 
 (define (need-forwarding-pointers? thing)
   (cond
@@ -337,7 +334,7 @@
     [(1st-gen? loc)
      (case (heap-ref/check! loc)
        [(flat) (define new-addr (copy/alloc 2 #f #f))
-               (heap-set! new-addr 'flat)
+               (heap-set! new-addr 'white-flat)
                (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1))) 
                (heap-set! loc 'frwd)
                (heap-set! (+ loc 1) new-addr)
@@ -345,7 +342,7 @@
        [(pair) (define new-addr (copy/alloc 3
                                             (heap-ref/check! (+ loc 1))
                                             (heap-ref/check! (+ loc 2))))
-               (heap-set! new-addr 'pair)
+               (heap-set! new-addr 'white-pair)
                (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
                (heap-set! (+ new-addr 2) (track/loc (heap-ref/check! (+ loc 2))))
                (heap-set! loc 'frwd)
@@ -356,8 +353,9 @@
                                                (lambda (i)
                                                  (heap-ref/check! (+ loc 3 i)))))
                (define new-addr (copy/alloc length free-vars '()))
-               (for ([x (in-range 0 3)])
-                 (heap-set! (+ new-addr x) (heap-ref/check! (+ loc x))))
+               (heap-set! new-addr 'white-proc)
+               (heap-set! (+ 1 new-addr) (heap-ref/check! (+ 1 loc)))
+               (heap-set! (+ 2 new-addr) (heap-ref/check! (+ 2 loc)))
                (for ([x (in-range 3 length)])
                  (heap-set! (+ new-addr x) (track/loc (heap-ref/check! (+ loc x)))))
                (heap-set! loc 'frwd)
@@ -368,15 +366,15 @@
                                             (lambda (i)
                                               (heap-ref/check! (+ loc 2 i)))))
                  (define new-addr (copy/alloc (+ 2 var-count) vars '()))
-                 (for ([x (in-range 0 2)])
-                   (heap-set! (+ new-addr x) (heap-ref/check! (+ loc x))))
+                 (heap-set! new-addr 'white-vector)
+                 (heap-set! (+ 1 new-addr) (heap-ref/check! (+ loc 1)))
                  (for ([x (in-range var-count)])
                    (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
                  (heap-set! loc 'frwd)
                  (heap-set! (+ loc 1) new-addr)
                  new-addr]
        [(struct) (define new-addr (copy/alloc 4 (heap-ref/check! (+ loc 2)) #f))
-                 (heap-set! new-addr 'struct)
+                 (heap-set! new-addr 'white-struct)
                  (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1)))
                  (define parent (heap-ref/check! (+ loc 2)))
                  (heap-set! (+ new-addr 2) (and parent (track/loc parent)))
@@ -389,7 +387,7 @@
                                                      (lambda (i)
                                                        (heap-ref/check! (+ loc 2 i)))))
                           (define new-addr (copy/alloc (+ 2 var-count) vars '()))
-                          (heap-set! new-addr 'struct-instance)
+                          (heap-set! new-addr 'white-struct-instance)
                           (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
                           (for ([x (in-range var-count)])
                             (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
@@ -446,11 +444,11 @@
      (forward/pointers (+ loc 2))]))
 
 (define (free-1st-gen)
-  (for ([i (in-range 2 1st-gen-size)])
+  (for ([i (in-range 0 1st-gen-size)])
     (heap-set! i 'free)))
 
 (define (1st-gen? loc)
-  (and (>= loc 2)
+  (and (>= loc 0)
        (< loc 1st-gen-size)))
 
 (define (2nd-gen? loc)
@@ -462,39 +460,43 @@
     (error 'heap-ref/check! "should be a location? at ~a" loc))
   (heap-ref loc))
 
-(define (find-free-space start size)
+(define (find-free-space start end size)
   (cond
-    [(= start 2nd-gen-size) #f]
+    [(= start end) #f]
     [else
      (case (heap-ref start)
-       [(free) (if (n-free-blocks? start size)
+       [(free) (if (n-free-blocks? start end size)
                    start
-                   (find-free-space (+ start 1) size))]
-       [(flat grey-flat white-flat) (find-free-space (+ start 2) size)]
-       [(pair grey-pair white-pair cont) (find-free-space (+ start 3) size)]
+                   (find-free-space (+ start 1) end size))]
+       [(flat grey-flat white-flat) (find-free-space (+ start 2) end size)]
+       [(pair grey-pair white-pair cont) (find-free-space (+ start 3) end size)]
        [(proc grey-proc white-proc)
         (find-free-space
          (+ start 3 (heap-ref (+ start 2)))
+         end
          size)]
        [(vector grey-vector white-vector)
         (find-free-space
           (+ start 2 (heap-ref (+ start 1)))
+          end
           size)]
-       [(struct grey-struct white-struct) (find-free-space (+ start 4) size)]
+       [(struct grey-struct white-struct) (find-free-space (+ start 4) end size)]
        [(struct-instance grey-struct-instance white-struct-instance)
         (find-free-space
           (+ start 2 (heap-ref (+ 3 (heap-ref (+ start 1)))))
+          end
           size)]
        [else
         (error 'find-free-space "wrong tag at ~a" start)])]))
 
-(define (n-free-blocks? start size)
+(define (n-free-blocks? start end size)
   (cond
     [(= size 0) #t]
-    [(= start 2nd-gen-size) #f]
+    [(= start end) #f]
     [else 
      (and (eq? 'free (heap-ref/check! start))
           (n-free-blocks? (+ start 1)
+                          end
                           (- size 1)))]))
 
 (define (make-pointers-to-2nd-gen-roots start)
@@ -505,31 +507,31 @@
      (case (heap-ref/check! start)
        [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
        [(pair) (define one-loc (heap-ref/check! (+ start 1)))
-               (when (2nd-gen? one-loc) (traverse/roots-white one-loc))
+               (when (2nd-gen? one-loc) (trace/roots-iff-white one-loc))
                (define another-loc (heap-ref/check! (+ start 2)))
-               (when (2nd-gen? another-loc) (traverse/roots-white another-loc))
+               (when (2nd-gen? another-loc) (trace/roots-iff-white another-loc))
                (make-pointers-to-2nd-gen-roots (+ start 3))]
        [(proc) (define fv-counts (heap-ref/check! (+ start 2)))
                (for ([i (in-range fv-counts)])
                  (define loc (heap-ref/check! (+ start 3 i)))
-                 (when (2nd-gen? loc) (traverse/roots-white loc)))
+                 (when (2nd-gen? loc) (trace/roots-iff-white loc)))
                (make-pointers-to-2nd-gen-roots (+ start 3 fv-counts))]
        [(vector) (define element-count (heap-ref/check! (+ start 1)))
                  (for ([i (in-range element-count)])
                    (define loc (heap-ref/check! (+ start 2 i)))
-                   (when (2nd-gen? loc) (traverse/roots-white loc)))
+                   (when (2nd-gen? loc) (trace/roots-iff-white loc)))
                  (make-pointers-to-2nd-gen-roots (+ start 2 element-count))]
        [(struct) (define parent (heap-ref/check! (+ start 2)))
                  (when (and parent (2nd-gen? parent))
-                   (traverse/roots-white parent))
+                   (trace/roots-iff-white parent))
                  (make-pointers-to-2nd-gen-roots (+ start 4))]
        [(struct-instance) (define fields-count (heap-ref/check! (+ 3 (heap-ref/check! (+ start 1)))))
                           (define struct-loc (heap-ref/check! (+ start 1)))
                           (when (2nd-gen? struct-loc)
-                            (traverse/roots-white struct-loc))
+                            (trace/roots-iff-white struct-loc))
                           (for ([i (in-range fields-count)])
                             (define loc (heap-ref/check! (+ start 2 i)))
-                            (when (2nd-gen? loc) (traverse/roots-white loc)))
+                            (when (2nd-gen? loc) (trace/roots-iff-white loc)))
                           (make-pointers-to-2nd-gen-roots (+ start 2 fields-count))]
        [(frwd) (define loc (heap-ref/check! (+ start 1)))
                (case (heap-ref/check! loc)
@@ -543,27 +545,26 @@
        [else (error 'make-pointers-to-2nd-gen-roots "wrong tag at ~a" start)])]))
 
 (define (copy/alloc n some-roots more-roots)
-  (define next (find-free-space 2nd-gen-start n))
+  (define next (find-free-space 2nd-gen-start 2nd-gen-size n))
   (cond
     [next
       (heap-set! volume-word (+ n (heap-ref volume-word)))
       (heap-set! step-count-word (+ n (heap-ref step-count-word)))
-      (traverse/roots-white (get-root-set))
-      ;; scan young generation for pointers to be roots
-      ;; should be less frequent
-      (make-pointers-to-2nd-gen-roots 2)
       (when (>= (heap-ref step-count-word) step-length)
-        (traverse/incre-mark (next/cont)))
-      (let ([loc (find-free-space next n)])
+        (begin
+          (trace/roots-iff-white (get-root-set))
+          (make-pointers-to-2nd-gen-roots 0)
+          (traverse/incre-mark (next/cont))))
+      (let ([loc (find-free-space next 2nd-gen-size n)])
         (if loc
           loc
           (error 'copy/alloc "old generation gc failed")))]
     [else (error 'copy/alloc "old generation gc failed")]))
 
-(define (traverse/roots-white thing)
+(define (trace/roots-iff-white thing)
   (cond
     [(list? thing)
-     (for-each traverse/roots-white thing)]
+     (for-each trace/roots-iff-white thing)]
     [(root? thing)
      (define loc (read-root thing))
      (when (white? loc)
@@ -860,7 +861,7 @@
   (case (heap-ref ptr)
     [(pair flat proc vector strut struct-instance) (void)]
     [else
-      (define loc (find-free-space 2nd-gen-start 3))
+      (define loc (find-free-space 2nd-gen-start 2nd-gen-size 3))
       (define head (heap-ref tracing-head-word))
       (heap-set! loc 'cont)
       (heap-set! (+ loc 1) ptr)
@@ -907,7 +908,7 @@
 (let ([test-heap (vector 2 'left 'flat 2
                          'free 'free 'free 'free
                          'not-in-gc 0 0 0
-                         'vector 1 2 'free
+                         'white-vector 1 2 'free
                          'free 'free 'free 'free
                          'free 'free 'free 'free
                          'free 'free 'free 'free
@@ -919,368 +920,8 @@
         (vector 2 'left 'frwd 15
                 'free 'free 'free 'free
                 'not-in-gc 2 2 0
-                'vector 1 15 'flat
+                'white-vector 1 15 'white-flat
                 2 'free 'free 'free
                 'free 'free 'free 'free
                 'free 'free 'free 'free
                 29 'free 'free 'free)))
-#|
-(define test-heap1 (make-vector 48 'f))
-;; init-allocator
-(test (with-heap test-heap1
-                 (init-allocator)
-                 test-heap1)
-      (vector 2 'left 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-;; alloc
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (alloc 2 #f #f))
-      4)
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (alloc 2 #f #f)
-                 test-heap1)
-      (vector 6 'left 'flat 0
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (alloc 2 #f #f))
-      7)
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (alloc 2 #f #f)
-                 test-heap1)
-      (vector 9 'right 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (alloc 3 2 2))
-      4)
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (alloc 3 2 2)
-                 test-heap1)
-      (vector 10 'right 'frwd 12
-              'flat 0 'free 'free
-              'free 'free 'free 'free
-              'flat 0 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-;; gc:alloc-flat
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 test-heap1)
-      (vector 4 'left 'flat 0
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(let ([v (make-vector 56 'f)])
-  (test (with-heap v
-                   (init-allocator)
-                   (gc:alloc-flat 0)
-                   (gc:alloc-flat 0)
-                   (gc:alloc-flat 0)
-                   (gc:alloc-flat 0)
-                   v)
-        (vector 10 'right 'free 'free
-                'free 'free 'free 'free
-                'flat 0 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 50 'free 'free
-                'free 'free 'free 'free)))
-;; gc:cons
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:cons 2 2)
-                 test-heap1)
-      (vector 5 'left 'pair 2
-              2 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:cons 2 2)
-                 test-heap1)
-      (vector 7 'left 'flat 0
-              'pair 2 2 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (gc:cons 2 2)
-                 test-heap1)
-      (vector 10 'right 'free 'free
-              'free 'free 'free 'pair
-              12 12 'free 'free
-              'flat 0 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 1)
-                 (gc:cons 2 4))
-      7)
-(let ([v (make-vector 56 'f)])
-  (test (with-heap v
-                   (init-allocator)
-                   (gc:alloc-flat 0)
-                   (gc:alloc-flat 0)
-                   (gc:alloc-flat 0)
-                   (gc:cons 6 6)
-                   v)
-        (vector 11 'right 'free 'free 
-                'free 'free 'free 'free 
-                'pair 14 14 'free 
-                'free 'free 'flat 0
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 50 'free 'free
-                'free 'free 'free 'free)))
-;; gc:closure
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector))
-                 test-heap1)
-      (vector 7 'left 'flat 0
-              'proc 'f 0 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 43 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap1
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector 2)))
-      7)
-(let ([v (make-vector 56 'f)])
-  (test (with-heap v
-                   (init-allocator)
-                   (gc:alloc-flat 0)
-                   (gc:alloc-flat 0)
-                   (gc:closure 'f (vector 2))
-                   v)
-        (vector 12 'right 'free 'free 
-                'free 'free 'free 'free 
-                'proc 'f 1 14 
-                'free 'free 'flat 0
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 'free 'free 'free
-                'free 50 'free 'free
-                'free 'free 'free 'free)))
-;; combination
-(define test-heap3 (make-vector 56 'f))
-(test (with-heap test-heap3
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector))
-                 (gc:alloc-flat 0)
-                 test-heap3)
-      (vector 13 'right 'free 'free
-              'free 'free 'free 'free
-              'proc 'f 0 'flat
-              0 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 50 'free 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap3
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector))
-                 (change-active-semi-space)
-                 (forward/loc 8)
-                 test-heap3)
-      (vector 5 'left 'proc 'f 
-              0 'free 'free 'free 
-              'frwd 2 0 'free 
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 50 'free 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap3
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector))
-                 (gc:alloc-flat 0)
-                 (gc:cons 8 8)
-                 test-heap3)
-      (vector 5 'left 'pair 14
-              14 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'proc 'f
-              0 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 50 'free 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap3
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector 2))
-                 test-heap3)
-      (vector 12 'right 'free 'free
-              'free 'free 'free 'free
-              'proc 'f 1 14
-              'free 'free 'flat 0
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 50 'free 'free
-              'free 'free 'free 'free))
-(test (with-heap test-heap3
-                 (init-allocator)
-                 (gc:alloc-flat 0)
-                 (gc:alloc-flat 0)
-                 (gc:closure 'f (vector 2))
-                 (gc:cons 8 14)
-                 test-heap3)
-      (vector 5 'left 'pair 16
-              14 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'flat 0
-              'proc 'f 1 14
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 'free 'free 'free
-              'free 50 'free 'free
-              'free 'free 'free 'free))
-|#
