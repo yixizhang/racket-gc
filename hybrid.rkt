@@ -344,73 +344,76 @@
 ;; move object to the other semi-space
 ;; and return the new addr of moved object
 (define (forward/loc loc)
-  (cond
-    [(1st-gen? loc)
-     (case (heap-ref/check! loc)
-       [(flat) (define new-addr (copy/alloc 2 #f #f))
-               (heap-set! new-addr 'flat)
-               (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1))) 
-               (heap-set! loc 'frwd)
-               (heap-set! (+ loc 1) new-addr)
-               new-addr]
-       [(pair) (define new-addr (copy/alloc 3
-                                            (heap-ref/check! (+ loc 1))
-                                            (heap-ref/check! (+ loc 2))))
-               (heap-set! new-addr 'pair)
-               (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
-               (heap-set! (+ new-addr 2) (track/loc (heap-ref/check! (+ loc 2))))
-               (heap-set! loc 'frwd)
-               (heap-set! (+ loc 1) new-addr)
-               new-addr]
-       [(proc) (define length (+ 3 (heap-ref/check! (+ loc 2))))
-               (define free-vars (build-vector (- length 3)
-                                               (lambda (i)
-                                                 (heap-ref/check! (+ loc 3 i)))))
-               (define new-addr (copy/alloc length free-vars '()))
-               (heap-set! new-addr 'proc)
-               (heap-set! (+ 1 new-addr) (heap-ref/check! (+ 1 loc)))
-               (heap-set! (+ 2 new-addr) (heap-ref/check! (+ 2 loc)))
-               (for ([x (in-range 3 length)])
-                 (heap-set! (+ new-addr x) (track/loc (heap-ref/check! (+ loc x)))))
-               (heap-set! loc 'frwd)
-               (heap-set! (+ loc 1) new-addr)
-               new-addr]
-       [(vector) (define var-count (heap-ref/check! (+ loc 1)))
-                 (define vars (build-vector var-count
-                                            (lambda (i)
-                                              (heap-ref/check! (+ loc 2 i)))))
-                 (define new-addr (copy/alloc (+ 2 var-count) vars '()))
-                 (heap-set! new-addr 'vector)
-                 (heap-set! (+ 1 new-addr) (heap-ref/check! (+ loc 1)))
-                 (for ([x (in-range var-count)])
-                   (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
-                 (heap-set! loc 'frwd)
-                 (heap-set! (+ loc 1) new-addr)
-                 new-addr]
-       [(struct) (define new-addr (copy/alloc 4 (heap-ref/check! (+ loc 2)) #f))
-                 (heap-set! new-addr 'struct)
-                 (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1)))
-                 (define parent (heap-ref/check! (+ loc 2)))
-                 (heap-set! (+ new-addr 2) (and parent (track/loc parent)))
-                 (heap-set! (+ new-addr 3) (heap-ref/check! (+ loc 3)))
-                 (heap-set! loc 'frwd)
-                 (heap-set! (+ loc 1) new-addr)
-                 new-addr]
-       [(struct-instance) (define var-count (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1)))))
-                          (define vars (build-vector var-count
-                                                     (lambda (i)
-                                                       (heap-ref/check! (+ loc 2 i)))))
-                          (define new-addr (copy/alloc (+ 2 var-count) vars '()))
-                          (heap-set! new-addr 'struct-instance)
-                          (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
-                          (for ([x (in-range var-count)])
-                            (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
-                          (heap-set! loc 'frwd)
-                          (heap-set! (+ loc 1) new-addr)
-                          new-addr]
-       [(frwd) (heap-ref/check! (+ loc 1))]
-       [else (error 'forward/loc "wrong tag ~s at ~a" (heap-ref/check! loc) loc)])]
-    [else loc]))
+  (case (heap-ref/check! loc)
+    [(flat) 
+     (define new-addr (copy/alloc 2 #f #f))
+     (heap-set! new-addr 'flat)
+     (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1))) 
+     (heap-set! loc 'frwd)
+     (heap-set! (+ loc 1) new-addr)
+     new-addr]
+    [(pair) 
+     (define new-addr (copy/alloc 3
+                                  (heap-ref/check! (+ loc 1))
+                                  (heap-ref/check! (+ loc 2))))
+     (heap-set! new-addr 'pair)
+     (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
+     (heap-set! (+ new-addr 2) (track/loc (heap-ref/check! (+ loc 2))))
+     (heap-set! loc 'frwd)
+     (heap-set! (+ loc 1) new-addr)
+     new-addr]
+    [(proc) 
+     (define length (+ 3 (heap-ref/check! (+ loc 2))))
+     (define free-vars (build-vector (- length 3)
+                                     (lambda (i)
+                                       (heap-ref/check! (+ loc 3 i)))))
+     (define new-addr (copy/alloc length free-vars '()))
+     (heap-set! new-addr 'proc)
+     (heap-set! (+ 1 new-addr) (heap-ref/check! (+ 1 loc)))
+     (heap-set! (+ 2 new-addr) (heap-ref/check! (+ 2 loc)))
+     (for ([x (in-range 3 length)])
+          (heap-set! (+ new-addr x) (track/loc (heap-ref/check! (+ loc x)))))
+     (heap-set! loc 'frwd)
+     (heap-set! (+ loc 1) new-addr)
+     new-addr]
+    [(vector) 
+     (define var-count (heap-ref/check! (+ loc 1)))
+     (define vars (build-vector var-count
+                                (lambda (i)
+                                  (heap-ref/check! (+ loc 2 i)))))
+     (define new-addr (copy/alloc (+ 2 var-count) vars '()))
+     (heap-set! new-addr 'vector)
+     (heap-set! (+ 1 new-addr) (heap-ref/check! (+ loc 1)))
+     (for ([x (in-range var-count)])
+          (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
+     (heap-set! loc 'frwd)
+     (heap-set! (+ loc 1) new-addr)
+     new-addr]
+    [(struct) 
+     (define new-addr (copy/alloc 4 (heap-ref/check! (+ loc 2)) #f))
+     (heap-set! new-addr 'struct)
+     (heap-set! (+ new-addr 1) (heap-ref/check! (+ loc 1)))
+     (define parent (heap-ref/check! (+ loc 2)))
+     (heap-set! (+ new-addr 2) (and parent (track/loc parent)))
+     (heap-set! (+ new-addr 3) (heap-ref/check! (+ loc 3)))
+     (heap-set! loc 'frwd)
+     (heap-set! (+ loc 1) new-addr)
+     new-addr]
+    [(struct-instance) 
+     (define var-count (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1)))))
+     (define vars (build-vector var-count
+                                (lambda (i)
+                                  (heap-ref/check! (+ loc 2 i)))))
+     (define new-addr (copy/alloc (+ 2 var-count) vars '()))
+     (heap-set! new-addr 'struct-instance)
+     (heap-set! (+ new-addr 1) (track/loc (heap-ref/check! (+ loc 1))))
+     (for ([x (in-range var-count)])
+          (heap-set! (+ new-addr 2 x) (track/loc (heap-ref/check! (+ loc 2 x)))))
+     (heap-set! loc 'frwd)
+     (heap-set! (+ loc 1) new-addr)
+     new-addr]
+    [(frwd) (heap-ref/check! (+ loc 1))]
+    [else (error 'forward/loc "wrong tag ~s at ~a" (heap-ref/check! loc) loc)]))
 
 ;; forward/ref : loc -> loc
 ;; move the referenced object to the other semi-space
@@ -418,31 +421,36 @@
 (define (forward/ref loc)
   (case (heap-ref/check! loc)
     [(flat grey-flat white-flat) (void)]
-    [(pair grey-pair white-pair) (gc:set-first! loc (forward/loc (heap-ref/check! (+ loc 1))))
-            (gc:set-rest! loc (forward/loc (heap-ref/check! (+ loc 2))))
-            (forward/ref (heap-ref (+ loc 1)))
-            (forward/ref (heap-ref (+ loc 2)))]
-    [(proc grey-proc white-proc) (define fv-count (heap-ref/check! (+ loc 2)))
-            (for ([x (in-range 0 fv-count)])
-              (define l (+ loc 3 x))
-              (heap-set! l (forward/loc (heap-ref/check! l)))
-              (forward/ref (heap-ref/check! l)))]
-    [(vector grey-vector white-vector) (define var-count (heap-ref/check! (+ loc 1)))
-              (for ([x (in-range var-count)])
-                (define l (+ loc 2 x))
-                (heap-set! l (forward/loc (heap-ref/check! l)))
-                (forward/ref (heap-ref/check! l)))]
-    [(struct grey-struct white-struct) (define parent (heap-ref/check! (+ loc 2)))
-              (when parent
-                (heap-set! (+ loc 2) (forward/loc parent))
-                (forward/ref (heap-ref/check! (+ loc 2))))]
-    [(struct-instance grey-struct-instance white-struct-instance) (define fields-count (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1)))))
-                       (heap-set! (+ loc 1) (forward/loc (heap-ref/check! (+ loc 1))))
-                       (forward/ref (heap-ref/check! (+ loc 1)))
-                       (for ([x (in-range fields-count)])
-                         (define l (+ loc 2 x))
-                         (heap-set! l (forward/loc (heap-ref/check! l)))
-                         (forward/ref (heap-ref/check! l)))]
+    [(pair grey-pair white-pair) 
+     (gc:set-first! loc (forward/loc (heap-ref/check! (+ loc 1))))
+     (gc:set-rest! loc (forward/loc (heap-ref/check! (+ loc 2))))
+     (forward/ref (heap-ref (+ loc 1)))
+     (forward/ref (heap-ref (+ loc 2)))]
+    [(proc grey-proc white-proc) 
+     (define fv-count (heap-ref/check! (+ loc 2)))
+     (for ([x (in-range 0 fv-count)])
+          (define l (+ loc 3 x))
+          (heap-set! l (forward/loc (heap-ref/check! l)))
+          (forward/ref (heap-ref/check! l)))]
+    [(vector grey-vector white-vector) 
+     (define var-count (heap-ref/check! (+ loc 1)))
+     (for ([x (in-range var-count)])
+          (define l (+ loc 2 x))
+          (heap-set! l (forward/loc (heap-ref/check! l)))
+          (forward/ref (heap-ref/check! l)))]
+    [(struct grey-struct white-struct) 
+     (define parent (heap-ref/check! (+ loc 2)))
+     (when parent
+       (heap-set! (+ loc 2) (forward/loc parent))
+       (forward/ref (heap-ref/check! (+ loc 2))))]
+    [(struct-instance grey-struct-instance white-struct-instance) 
+     (define fields-count (heap-ref/check! (+ 3 (heap-ref/check! (+ loc 1)))))
+     (heap-set! (+ loc 1) (forward/loc (heap-ref/check! (+ loc 1))))
+     (forward/ref (heap-ref/check! (+ loc 1)))
+     (for ([x (in-range fields-count)])
+          (define l (+ loc 2 x))
+          (heap-set! l (forward/loc (heap-ref/check! l)))
+          (forward/ref (heap-ref/check! l)))]
     [else (error 'forward/ref "wrong tag at ~a" loc)]))
 
 (define (forward/pointers loc)
@@ -539,14 +547,15 @@
                  (when (and parent (2nd-gen? parent))
                    (trace/roots-iff-white parent))
                  (make-pointers-to-2nd-gen-roots (+ start 4))]
-       [(struct-instance) (define fields-count (heap-ref/check! (+ 3 (heap-ref/check! (+ start 1)))))
-                          (define struct-loc (heap-ref/check! (+ start 1)))
-                          (when (2nd-gen? struct-loc)
-                            (trace/roots-iff-white struct-loc))
-                          (for ([i (in-range fields-count)])
-                            (define loc (heap-ref/check! (+ start 2 i)))
-                            (when (2nd-gen? loc) (trace/roots-iff-white loc)))
-                          (make-pointers-to-2nd-gen-roots (+ start 2 fields-count))]
+       [(struct-instance) 
+        (define fields-count (heap-ref/check! (+ 3 (heap-ref/check! (+ start 1)))))
+        (define struct-loc (heap-ref/check! (+ start 1)))
+        (when (2nd-gen? struct-loc)
+          (trace/roots-iff-white struct-loc))
+        (for ([i (in-range fields-count)])
+             (define loc (heap-ref/check! (+ start 2 i)))
+             (when (2nd-gen? loc) (trace/roots-iff-white loc)))
+        (make-pointers-to-2nd-gen-roots (+ start 2 fields-count))]
        [(frwd) (define loc (heap-ref/check! (+ start 1)))
                (case (heap-ref/check! loc)
                  [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
