@@ -614,7 +614,8 @@
 (define (mutator-procedure? thing)
   (collector:alloc-flat (procedure? (deref-proc thing))))
 (define (mutator-procedure-arity-includes? proc num)
-  (collector:alloc-flat (procedure-arity-includes? (deref-proc proc)  num)))
+  (collector:alloc-flat (procedure-arity-includes? (deref-proc proc)
+                                                   (collector:deref num))))
 (define (mutator-file-position port)
   (collector:alloc-flat (file-position (collector:deref port))))
 
@@ -658,18 +659,16 @@
 
 ;; regexp related
 (define (mutator-regexp-match pattern input)
-  (collector:alloc-flat (regexp-match (collector:deref pattern)
-                                      (collector:deref input))))
+  (scheme->gc (regexp-match (collector:deref pattern)
+                            (collector:deref input))))
 (define (mutator-regexp-replace* pattern input insert)
   (collector:alloc-flat (regexp-replace* (collector:deref pattern)
                                          (collector:deref input)
                                          (collector:deref insert))))
 ;; mutator-regexp-match-positions : byte-regexp?(loc) bytes?/string?(loc) -> boolean?(loc)
 (define (mutator-regexp-match-positions pattern input)
-  (collector:alloc-flat (if (regexp-match-positions (collector:deref pattern)
-                                                    (collector:deref input))
-                          #t
-                          #f)))
+  (scheme->gc (regexp-match-positions (collector:deref pattern)
+                                      (collector:deref input))))
 (define (mutator-bytes->string/utf-8 thing)
   (collector:alloc-flat (bytes->string/utf-8 (collector:deref thing))))
 
@@ -681,26 +680,27 @@
 (define (mutator-char-numeric? thing)
   (collector:alloc-flat (char-numeric? (collector:deref thing))))
 
-;; loc/list->cons/loc : (listof loc) -> loc
-(define (loc/list->cons/loc some-list)
+;; gc->list/loc : loc -> (listof loc)
+(define (gc->list/loc loc)
   (cond
-    [(null? some-list) 
-     (collector:alloc-flat '())]
-    [else 
-      (collector:cons (car some-list)
-                      (loc/list->cons/loc (cdr some-list)))]))
-;; cons/loc->loc/list : loc -> (listof loc)
-(define (cons/loc->loc/list loc)
+    [(and (collector:flat? loc)
+          (null? (collector:deref loc)))
+     '()]
+    [else (cons (collector:first loc)
+                (gc->list/loc (collector:rest loc)))]))
+;; list/loc->gc : (listof loc) -> loc
+(define (list/loc->gc lst)
   (cond
-    [(null? (collector:deref (collector:rest loc)))
-     (cons (collector:first loc) '())]
-    [else
-      (cons (collector:first (cons/loc->loc/list (collector:rest loc))))]))
+    [(null? (cdr lst)) 
+     (collector:cons (car lst)
+                     (collector:alloc-flat empty))]
+    [else (collector:cons (car lst) 
+                          (list/loc->gc (cdr lst)))]))
 ;; mutator-sort : loc loc -> loc
 (define (mutator-sort lst less-than?)
-  (let ([sorted (sort (cons/loc->loc/list lst) 
-                      (compose (deref-proc less-than?) gc->scheme))])
-    (loc/list->cons/loc sorted)))
+  (list/loc->gc (sort (gc->list/loc lst) 
+                      (lambda (a b) 
+                        (collector:deref ((deref-proc less-than?) a b))))))
 
 (define (mutator-make-vector length loc)
   (collector:vector (collector:deref length) 
@@ -708,9 +708,12 @@
 (define (mutator-vector-length loc)
   (collector:alloc-flat (collector:vector-length loc)))
 (define (mutator-vector-ref loc number)
-  (collector:vector-ref loc number))
+  (collector:vector-ref loc 
+                        (collector:deref number)))
 (define (mutator-vector-set! loc number a-loc)
-  (collector:vector-set! loc number a-loc)
+  (collector:vector-set! loc 
+                         (collector:deref number)
+                         a-loc)
   (void))
 
 (define (mutator-for-each f l)
@@ -748,7 +751,12 @@
 
 (provide (rename-out [mutator-eq? eq?]))
 (define (mutator-eq? l1 l2)
-  (collector:alloc-flat (= l1 l2)))
+  (cond
+    [(and (collector:flat? l1)
+          (collector:flat? l2))
+     (collector:alloc-flat (equal? (collector:deref l1)
+                                   (collector:deref l2)))]
+    [else (collector:alloc-flat (= l1 l2))]))
 
 (provide (rename-out [mutator-printf printf]))
 (define-syntax (mutator-printf stx)
@@ -794,6 +802,13 @@
               args)))]
    [else
     (error 'procedure-application "expected procedure, given ~e" v)]))
+
+;; scheme->gc : any -> location?
+(define (scheme->gc thing)
+  (cond
+    [(heap-value? thing) (collector:alloc-flat thing)]
+    [(pair? thing) (collector:cons (scheme->gc (car thing))
+                                   (scheme->gc (cdr thing)))]))
 
 (define (gc->scheme loc)
   (define-struct an-unset ())

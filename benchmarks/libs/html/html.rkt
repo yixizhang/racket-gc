@@ -1,12 +1,12 @@
 #lang plai/gc2/mutator
 ;; copyright by Paul Graunke June 2000 AD
 
-(allocator-setup "../incr-struct.rkt" 200)
+(allocator-setup "../../../hybrid.rkt" 200)
 
 (require "html-structs.rkt"
          "html-spec.rkt"
          "sgml-reader.rkt"
-         racket/contract
+         "util.rkt"
          "xml-structures.rkt")
 #|
 (provide (all-from-out "html-structs.rkt")
@@ -505,33 +505,6 @@
       (else acc)))
    ((or (pcdata? x) (entity? x)) (cons x acc))
    (else acc)))
-
-
-;; helper functions
-(define null empty)
-(define null? empty?)
-;; foldr : proc init lst -> any/c
-(define (foldr proc init lst)
-  (let ([lst (reverse lst)])
-    (let ([loop 47])
-      (begin
-        (set! loop
-          (lambda (v l)
-            (cond
-              [(null? l) v]
-              [else (loop (proc (car l) v) (cdr l))])))
-        (loop init lst)))))
-;; append : lst lst -> lst
-(define (append a b)
-  (cond
-    [(null? a) b]
-    [else (cons (car a) (append (cdr a) b))]))
-;; map : proc lst -> lst
-(define (map proc lst)
-  (cond
-    [(null? lst) null]
-    [else (cons (proc (car lst)) (map proc (cdr lst)))]))
-
 
 ;; xml->html : Document -> Html
 (define (xml->html doc)
