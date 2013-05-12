@@ -629,9 +629,9 @@
   (syntax-case stx ()
     [(_ form v ...)
      #`(collector:alloc-flat
-         (format (mutator-app gc->scheme form)
+         (format (gc->scheme form)
                  #,@(for/list ([v-v (in-list (syntax->list #`(v ...)))])
-                              #`(mutator-app gc->scheme #,v-v))))]))
+                              #`(gc->scheme #,v-v))))]))
 (define (mutator-read-string amt in)
   (collector:alloc-flat (read-string (collector:deref amt)
                                      (collector:deref in))))
@@ -692,10 +692,12 @@
 (define (list/loc->gc lst)
   (cond
     [(null? (cdr lst)) 
-     (collector:cons (car lst)
-                     (collector:alloc-flat empty))]
-    [else (collector:cons (car lst) 
-                          (list/loc->gc (cdr lst)))]))
+     (collector:cons (car lst) 
+                     (let ([loc (collector:alloc-flat empty)])
+                       (read-root (make-env-root loc))))]
+    [else 
+      (collector:cons (car lst) 
+                      (list/loc->gc (cdr lst)))]))
 ;; mutator-sort : loc loc -> loc
 (define (mutator-sort lst less-than?)
   (list/loc->gc (sort (gc->list/loc lst) 
@@ -806,9 +808,11 @@
 ;; scheme->gc : any -> location?
 (define (scheme->gc thing)
   (cond
-    [(heap-value? thing) (collector:alloc-flat thing)]
-    [(pair? thing) (collector:cons (scheme->gc (car thing))
-                                   (scheme->gc (cdr thing)))]))
+    [(heap-value? thing) 
+     (let ([flat/loc (collector:alloc-flat thing)])
+       (read-root (make-env-root flat/loc)))]
+    [(pair? thing) 
+     (collector:cons (scheme->gc (car thing)) (scheme->gc (cdr thing)))]))
 
 (define (gc->scheme loc)
   (define-struct an-unset ())
