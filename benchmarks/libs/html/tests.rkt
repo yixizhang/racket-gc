@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../../generational.rkt" 400)
+(allocator-setup "../../../hybrid.rkt" 400)
 (require "util.rkt")
 
 (define hash (make-hash))
