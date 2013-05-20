@@ -1,16 +1,17 @@
 #lang plai/gc2/mutator
 ;; copyright by Paul Graunke June 2000 AD
 
-(allocator-setup "../../../hybrid.rkt" 200)
+(allocator-setup "../../../hybrid.rkt" 400)
 
 (require "html-structs.rkt"
          "html-spec.rkt"
          "sgml-reader.rkt"
          "util.rkt"
          "xml-structures.rkt")
-#|
+
 (provide (all-from-out "html-structs.rkt")
-         read-html-comments)
+         (all-defined-out))
+#|
 (provide/contract
  [use-html-spec (parameter/c boolean?)]
  [read-html (() (input-port?) . ->* . html?)]
@@ -516,7 +517,7 @@
 ;; xml-content->html : (listof Content) -> (listof Html-element)
 (define (xml-contents->html contents)
   (foldr xml-single-content->html
-         null
+         empty
          contents))
 
 ;; read-xhtml : [Input-port] -> Html
@@ -534,16 +535,16 @@
 ;; repackage-html : (listof Html-content) -> Html
 (define (repackage-html contents)
   (let ([html (memf html? contents)])
-    (let ([peeled (peel-f html? contents null)])
+    (let ([peeled (peel-f html? contents empty)])
       (let ([body (memf body? peeled)])
         (make-html (if html
                      (html-element-attributes (car html))
-                     null)
+                     empty)
                    (append (filter head? peeled)
                            (cons (make-body (if body
                                               (html-element-attributes (car body))
-                                              null)
-                                            (filter (compose not head?) (peel-f body? peeled null))) null)))))))
+                                              empty)
+                                            (filter (compose not head?) (peel-f body? peeled empty))) empty)))))))
 
 ;; clean-up-pcdata : (listof Content) -> (listof Content)
 ;; Each pcdata inside a tag that isn't supposed to contain pcdata is either
@@ -577,18 +578,18 @@
                     (let ([possible (may-contain (element-name el))])
                       (if (or (not possible) (memq 'pcdata possible))
                         (cons (recontent-xml el (append non-elements (clean-up-pcdata (element-content el)) (eliminate-pcdata (first-non-elements (cdr more)))))
-                              (or (memf element? (cdr more)) null))
+                              (or (memf element? (cdr more)) empty))
                         (cons (recontent-xml el (eliminate-pcdata (element-content el)))
                               (eliminate-pcdata (cdr more))))))
-                  null)))])
+                  empty)))])
            clean-up-pcdata))
 
 ;; first-non-elements : (listof Content) -> (listof Content)
 (define (first-non-elements content)
   (cond
-    [(null? content) null]
+    [(empty? content) empty]
     [else (if (element? (car content))
-              null
+              empty
               (cons (car content) (first-non-elements (cdr content))))]))
 
 ;; recontent-xml : Element (listof Content) -> Element
@@ -605,7 +606,7 @@
   (gen-may-contain html-spec))
 
 (define may-contain-anything
-  (gen-may-contain null))
+  (gen-may-contain empty))
 
 (define use-html-spec (make-parameter #t))
 

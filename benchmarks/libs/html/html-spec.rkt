@@ -1,6 +1,6 @@
 #lang plai/gc2/mutator
 
-(allocator-setup "../../../hybrid.rkt" 200)
+(allocator-setup "../../../hybrid.rkt" 400)
 (require racket/contract
          "sgml-reader.rkt")
 #|

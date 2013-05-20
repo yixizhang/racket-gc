@@ -3,7 +3,7 @@
 ;; It needs to be abstracted back in.
 #lang plai/gc2/mutator
 
-(allocator-setup "../../../hybrid.rkt" 200)
+(allocator-setup "../../../hybrid.rkt" 400)
 (require "xml-structures.rkt"
          "util.rkt")
 
@@ -43,6 +43,26 @@
   (read-from-port may-contain auto-insert in))
 
 ;; read-from-port : Kid-lister (Symbol Symbol -> (U #f Symbol)) Input-port -> (listof Content)
+(define (read-tokens in)
+  (let ([tok (lex in)])
+    (cond
+      [(eof-object? tok) empty]
+      [else (cons tok (read-tokens in))])))
+(define (read-from-port-loop tokens may-contain auto-insert)
+  (cond
+    [(empty? tokens) empty]
+    [else
+     (let ([tok (first tokens)] [rest-tokens (rest tokens)])
+       (cond
+         [(start-tag? tok)
+          (let-values ([(el more-tokens) (read-element tok empty may-contain auto-insert rest-tokens)])
+            (cons el (read-from-port-loop more-tokens may-contain auto-insert)))]
+         [(end-tag? tok) (read-from-port-loop rest-tokens may-contain auto-insert)]
+         [else (let ([rest-contents (read-from-port-loop rest-tokens may-contain auto-insert)])
+                 (expand-content tok rest-contents))]))]))
+(define (read-from-port may-contain auto-insert in)
+  (let ([tokens (read-tokens in)])
+    (read-from-port-loop tokens may-contain auto-insert)))
 ;(define (read-from-port may-contain auto-insert in)
 ;  (let loop ([tokens (let read-tokens ()
 ;                       (let ([tok (lex in)])
@@ -61,33 +81,6 @@
 ;           [else (let ([rest-contents (loop rest-tokens)])
 ;                   (expand-content tok rest-contents))]))])))
 
-;; rewrite let 2nd form 
-(define null empty)
-(define (read-from-port may-contain auto-insert in)
-  (let [(loop 47)]
-    (begin
-      (set! loop 
-            (lambda (tokens)
-              (cond
-                [(null? tokens) null]
-                [else
-                 (let ([tok (first tokens)] [rest-tokens (rest tokens)])
-                   (cond
-                     [(start-tag? tok)
-                      (let-values ([(el more-tokens) (read-element tok null may-contain auto-insert rest-tokens)])
-                        (cons el (loop more-tokens)))]
-                     [(end-tag? tok) (loop rest-tokens)]
-                     [else (let ([rest-contents (loop rest-tokens)])
-                             (expand-content tok rest-contents))]))])))
-      (loop (let [(read-tokens 40)]
-              (begin
-                (set! read-tokens (lambda () 
-                                    (let ([tok (lex in)])
-                                      (cond
-                                        [(eof-object? tok) '()]
-                                        [else (cons tok (read-tokens))]))))
-                (read-tokens)))))))
-
 ;; read-element : Start-tag (listof Symbol) Kid-lister (Symbol Symbol -> (U #f Symbol)) (listof Token) -> Element (listof Token)
 ;; Note: How elements nest depends on their content model.
 ;;   If a kind of element can't contain anything, then its start tags are implicitly ended, and
@@ -99,63 +92,56 @@
 ;; more here (or not) - the (memq name context) test leaks for a worst case of O(n^2) in the
 ;;                      tag nesting depth.  However, this only should be a problem when the tag is there,
 ;;                      but far back.  That shouldn't happen often.  I'm guessing n will be about 3.
-    (define (read-element init-start-tag init-context may-contain auto-insert init-tokens)
-      (let ([read-el 26])
-        (begin
-          (set! read-el
-                (lambda (start-tag context tokens)
-                  (let* ([start-name (start-tag-name start-tag)]
-                         [ok-kids (may-contain start-name)])
-                    (let-values ([(content remaining)
-                                  (cond
-                                    [(null? ok-kids) (values null tokens)]
-                                    [else 
-                                     ;; read-content : (listof Token) -> (listof Content) (listof Token)
-                                     (let ([read-content 99])
-                                       (begin
-                                         (set! read-content
-                                               (lambda (_tokens)
-                                                 (cond
-                                                   [(null? tokens) (values null tokens)]
-                                                   [else
-                                                    (let ([tok (first _tokens)] [next-tokens (rest _tokens)])
-                                                      (cond
-                                                        [(start-tag? tok)
-                                                         (let* ([name (start-tag-name tok)]
-                                                                [auto-start (auto-insert start-name name)])
-                                                           (if auto-start
-                                                               (read-content (cons (make-start-tag (source-start tok) (source-stop tok) auto-start '()) _tokens))
-                                                               (if (and ok-kids
-                                                                        (not (memq name ok-kids))
-                                                                        (may-contain name))
-                                                                   (values null tokens)
-                                                                   (let ([element+post-hook (read-el tok (cons name context) next-tokens)])
-                                                                     (let ([element (first element+post-hook)]
-                                                                           [post-hook (first (rest element+post-hook))])
-                                                                       (let-values ([(element post-element)
-                                                                                     (read-el tok (cons name context) next-tokens)])
-                                                                         (let-values ([(more-contents left-overs) (read-content post-element)])
-                                                                           (values (cons element more-contents) left-overs))))))))]
-                                                        [(end-tag? tok)
-                                                         (let ([name (end-tag-name tok)])
-                                                           (if (eq? name start-name)
-                                                               (values null next-tokens)
-                                                               (if (memq name context)
-                                                                   (values null _tokens)
-                                                                   (read-content next-tokens))))]
-                                                        [else ;; content
-                                                         (let-values ([(more-contents left-overs) (read-content next-tokens)])
-                                                           (values
-                                                            (expand-content tok more-contents)
-                                                            left-overs))]))])))
-                                         (read-content tokens)))])])
-                      (values (make-element (source-start start-tag)
-                                            (source-stop start-tag)
-                                            start-name
-                                            (start-tag-attrs start-tag)
-                                            content)
-                              remaining)))))
-          (read-el init-start-tag (cons (start-tag-name init-start-tag) init-context) init-tokens))))
+(define (read-content/helper tokens context may-contain auto-insert start-name ok-kids)
+  (cond
+    [(null? tokens) (values empty tokens)]
+    [else
+     (let ([tok (first tokens)] [next-tokens (rest tokens)])
+       (cond
+         [(start-tag? tok)
+          (let* ([name (start-tag-name tok)]
+                 [auto-start (auto-insert start-name name)])
+            (if auto-start
+                (read-content/helper (cons (make-start-tag (source-start tok) (source-stop tok) auto-start empty) tokens)
+                                     context may-contain auto-insert start-name ok-kids)
+                (if (and ok-kids
+                         (not (memq name ok-kids))
+                         (may-contain name))
+                    (values empty tokens)
+                    (let-values ([(element post-element)
+                                  (read-el tok (cons name context) next-tokens)])
+                      (let-values ([(more-contents left-overs) (read-content/helper post-element
+                                                                                    context may-contain auto-insert start-name ok-kids)])
+                        (values (cons element more-contents) left-overs))))))]
+         [(end-tag? tok)
+          (let ([name (end-tag-name tok)])
+            (if (eq? name start-name)
+                (values empty next-tokens)
+                (if (memq name context)
+                    (values empty tokens)
+                    (read-content/helper next-tokens
+                                         context may-contain auto-insert start-name ok-kids))))]
+         [else 
+          (let-values ([(more-contents left-overs) (read-content/helper next-tokens
+                                                                        context may-contain auto-insert start-name ok-kids)])
+            (values
+             (expand-content tok more-contents)
+             left-overs))]))]))
+(define (read-el start-tag context may-contain auto-insert tokens)
+  (let ([start-name (start-tag-name start-tag)])
+    (let ([ok-kids (may-contain start-name)])
+      (let-values ([(content remaining)
+                    (cond
+                      [(empty? ok-kids) (values empty tokens)]
+                      [else (read-content/helper tokens context may-contain auto-insert start-name ok-kids)])])
+        (values (make-element (source-start start-tag)
+                              (source-stop start-tag)
+                              start-name
+                              (start-tag-attrs start-tag)
+                              content)
+                remaining)))))
+(define (read-element start-tag context may-contain auto-insert tokens)
+  (read-el start-tag context may-contain auto-insert tokens))
 
 ;; expand-content : Content (listof Content) -> (listof Content)
 (define (expand-content x lst)
@@ -269,22 +255,18 @@
              [(#\/)
               (begin
                 (read-char in) ;; skip #\> or something
-                (make-element start (local-file-position in) name attrs null))]
+                (make-element start (local-file-position in) name attrs empty))]
              [else (make-start-tag start (local-file-position in) name attrs)])))])))
 
 
 ;; lex-attributes : Input-port -> (listof Attribute)
+(define (lex-attributes-loop in)
+  (skip-space in)
+  (cond [(name-start? (peek-char in))
+         (cons (lex-attribute in) (lex-attributes-loop in))]
+        [else empty]))
 (define (lex-attributes in)
-  (sort (let ([loop 47])
-          (begin
-            (set! loop
-                  (begin
-                    (lambda ()
-                      (skip-space in)
-                      (cond [(name-start? (peek-char in))
-                             (cons (lex-attribute in) (loop))]
-                            [else null]))))
-            (loop)))
+  (sort (lex-attributes-loop in)
         (lambda (a b)
           (string<? (symbol->string (attribute-name a))
                     (symbol->string (attribute-name b))))))
@@ -293,6 +275,11 @@
 ;; Note: entities in attributes are ignored, since defacto html uses & in them for URL syntax
 (define (char-whitespace? c)
   (equal? c #\ ))
+(define (read-more in delimiter)
+  (let ([c (read-char in)])
+    (cond
+      [(or (eq? c delimiter) (eof-object? c)) empty]
+      [else (cons c (read-more in delimiter))])))
 (define (lex-attribute in)
   (let ([start (local-file-position in)]
         [name (lex-name in)])
@@ -305,32 +292,20 @@
          (let* ([delimiter (read-char in)]
                 [value (list->string
                         (case delimiter
-                          [(#\' #\")
-                           (let ([read-more 47])
-                             (begin
-                               (set! read-more
-                                     (lambda ()
-                                       (let ([c (read-char in)])
-                                         (cond
-                                           [(or (eq? c delimiter) (eof-object? c)) null]
-                                           [else (cons c (read-more))]))))
-                               (read-more)))]
+                          [(#\' #\") (read-more in delimiter)]
                           [else (cons delimiter (read-up-to (lambda (c) (or (char-whitespace? c) (eq? c #\>))) in))]))])
            (make-attribute start (local-file-position in) name value)))]
       [else (make-attribute start (local-file-position in) name (symbol->string name))])))
 
 ;; skip-space : Input-port -> Void
 ;; deviation - should sometimes insist on at least one space
+(define (skip-space/helper in)
+  (let ([c (peek-char in)])
+    (when (and (not (eof-object? c)) (char-whitespace? c))
+      (read-char in)
+      (skip-space/helper in))))
 (define (skip-space in)
-  (let ([loop 47])
-    (begin
-      (set! loop
-            (lambda ()
-              (let ([c (peek-char in)])
-                (when (and (not (eof-object? c)) (char-whitespace? c))
-                  (read-char in)
-                  (loop)))))
-      (loop))))
+  (skip-space/helper in))
 
 ;; lex-pcdata : Input-port -> Pcdata
 ;; deviation - disallow ]]> "for compatability" with SGML, sec 2.4 XML spec 
@@ -396,27 +371,24 @@
 
 
 ;; skip-dtd : Input-port -> Void
+(define (skip-dtd/helper in)
+  (let ([c (read-char in)])
+    (if (eof-object? c)
+        (void)
+        (case c
+          [(#\') (begin (read-until #\' in) (skip-dtd/helper in))]
+          [(#\") (begin (read-until #\" in) (skip-dtd/helper in))]
+          [(#\<)
+           (case (read-char in)
+             [(#\!) (case (read-char in)
+                      [(#\-) (begin (read-char in) (lex-comment-contents in) (skip-dtd/helper in))]
+                      [else (begin (skip-dtd/helper in) (skip-dtd/helper in))])]
+             [(#\?) (begin (lex-pi-data in) (skip-dtd/helper in))]
+             [else (begin (skip-dtd/helper in) (skip-dtd/helper in))])]
+          [(#\>) (void)]
+          [else (skip-dtd/helper in)]))))
 (define (skip-dtd in)
-  (let ([skip 47])
-    (begin
-      (set! skip
-            (lambda ()
-              (let ([c (read-char in)])
-                (if (eof-object? c)
-                    (void)
-                    (case c
-                      [(#\') (begin (read-until #\' in) (skip))]
-                      [(#\") (begin (read-until #\" in) (skip))]
-                      [(#\<)
-                       (case (read-char in)
-                         [(#\!) (case (read-char in)
-                                  [(#\-) (begin (read-char in) (lex-comment-contents in) (skip))]
-                                  [else (begin (skip) (skip))])]
-                         [(#\?) (begin (lex-pi-data in) (skip))]
-                         [else (begin (skip) (skip))])]
-                      [(#\>) (void)]
-                      [else (skip)])))))
-      (skip))))
+  (skip-dtd/helper in))
 
 ;; name-start? : TST -> Bool
 (define (name-start? ch)
@@ -439,76 +411,61 @@
 
 ;; read-up-to : (Char -> Bool) Input-port -> (listof Char)
 ;; abstract this with read-until
+(define (read-up-to/helper p? in)
+  (let ([c (peek-char in)])
+    (cond
+      [(or (eof-object? c) (p? c)) empty]
+      [else (cons (read-char in) (read-up-to/helper p? in))])))
 (define (read-up-to p? in)
-  (let ([loop 47])
-    (begin
-      (set! loop
-            (lambda ()
-              (let ([c (peek-char in)])
-                (cond
-                  [(or (eof-object? c) (p? c)) null]
-                  [else (cons (read-char in) (loop))]))))
-      (loop))))
+  (read-up-to/helper p? in))
 
 ;; read-until : Char Input-port -> String
 ;; discards the stop character, too
+(define (read-until/helper char in)
+  (let ([c (read-char in)])
+    (cond
+      [(or (eof-object? c) (eq? c char)) empty]
+      [else (cons c (read-until/helper char in))])))
 (define (read-until char in)
-  (list->string
-   (let ([read-more 47])
-     (begin
-       (set! read-more
-             (lambda ()
-               (let ([c (read-char in)])
-                 (cond
-                   [(or (eof-object? c) (eq? c char)) null]
-                   [else (cons c (read-more))]))))
-       (read-more)))))
+  (read-until/helper char in))
 
 ;; gen-read-until-string : String -> Input-port -> String
 ;; uses Knuth-Morris-Pratt from
 ;; Introduction to Algorithms, Cormen, Leiserson, and Rivest, pages 869-876
 ;; discards stop from input
+(define (fall-back/loop kv stop prefix c)
+  (cond
+    [(and (> kv 0) (not (eq? (string-ref stop kv) c)))
+     (fall-back/loop (vector-ref prefix (sub1 kv)) stop prefix c)]
+    [else kv]))
+(define (fall-back k c stop prefix)
+  (let ([k (fall-back/loop k stop prefix)])
+    (if (eq? (string-ref stop k) c)
+        (add1 k)
+        k)))
+(define (init/helper k q stop prefix len)
+  (when (< q len)
+    (let ([k (fall-back k (string-ref stop q))])
+      (vector-set! prefix q k)
+      (init/helper k (add1 q) stop prefix len))))
+(define (loop/helper matched in stop prefix len)
+  (let ([c (read-char in)])
+    (let ([matched (fall-back matched c stop prefix)])
+      (cond
+        [(or (eof-object? c) (= matched len)) empty]
+        [(zero? matched) (cons c (loop/helper matched in stop prefix len))]
+        [else (let ([rest (loop/helper matched in stop prefix len)])
+                (if (empty? rest)
+                    empty
+                    (cons c rest)))]))))
 (define (gen-read-until-string stop)
   (let* ([len (string-length stop)]
-         [prefix (make-vector len 0)]
-         [fall-back
-          (lambda (k c)
-            (let ([k (let ([loop 47])
-                       (begin
-                         (set! loop
-                               (lambda (kv)
-                                 (cond
-                                   [(and (> kv 0) (not (eq? (string-ref stop kv) c)))
-                                    (loop (vector-ref prefix (sub1 kv)))]
-                                   [else kv])))
-                         (loop k)))])
-              (if (eq? (string-ref stop k) c)
-                  (add1 k)
-                  k)))])
-    (let ([init 47])
-      (begin
-        (set! init
-              (lambda (k q)
-                (when (< q len)
-                  (let ([k (fall-back k (string-ref stop q))])
-                    (vector-set! prefix q k)
-                    (init k (add1 q))))))
-        (init 0 1)))
+         [prefix (make-vector len 0)])
+    (init/helper 0 1 stop prefix len)
     ;; (vector-ref prefix x) = the longest suffix that matches a prefix of stop
     (lambda (in)
       (list->string
-       (let ([loop 47])
-         (begin
-           (set! loop
-                 (lambda (matched)
-                   (let ([c (read-char in)])
-                     (let ([matched (fall-back matched c)])
-                       (cond
-                         [(or (eof-object? c) (= matched len)) null]
-                         [(zero? matched) (cons c (loop matched))]
-                         [else (let ([rest (loop matched)])
-                                 (if (null? rest) null (cons c rest)))])))))
-           (loop 0)))))))
+       (loop/helper 0 in stop prefix len)))))
 #|
     (lambda (in)
       (list->string

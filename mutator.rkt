@@ -48,6 +48,7 @@
           (mutator-top-interaction #%top-interaction)
           (mutator-module-begin #%module-begin)
           (mutator-current-input-port current-input-port)
+          (mutator-open-input-file open-input-file)
           (mutator-define-struct define-struct)
           (mutator-for-each for-each)
           (mutator-read-char read-char)
@@ -592,6 +593,9 @@
 (define (mutator-current-input-port)
   (collector:alloc-flat
    (current-input-port)))
+(define (mutator-open-input-file path)
+  (collector:alloc-flat
+    (open-input-file (collector:deref path))))
 (define (mutator-read-char port)
   (collector:alloc-flat
    (read-char (collector:deref port))))
