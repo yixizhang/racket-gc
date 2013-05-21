@@ -692,6 +692,7 @@
      '()]
     [else (cons (collector:first loc)
                 (gc->list/loc (collector:rest loc)))]))
+#|
 ;; list/loc->gc : (listof loc) -> loc
 (define (list/loc->gc lst)
   (cond
@@ -702,11 +703,13 @@
     [else 
       (collector:cons (car lst) 
                       (list/loc->gc (cdr lst)))]))
+|#
 ;; mutator-sort : loc loc -> loc
-(define (mutator-sort lst less-than?)
-  (list/loc->gc (sort (gc->list/loc lst) 
-                      (lambda (a b) 
-                        (collector:deref ((deref-proc less-than?) a b))))))
+(define (mutator-sort lst/loc less-than?/loc)
+  (scheme->gc (map collector:deref
+                   (sort (gc->list/loc lst/loc)
+                         (lambda (a b)
+                           (collector:deref ((deref-proc less-than?/loc) a b)))))))
 
 (define (mutator-make-vector length loc)
   (collector:vector (collector:deref length) 
@@ -811,12 +814,27 @@
 
 ;; scheme->gc : any -> location?
 (define (scheme->gc thing)
+  (let ([loc (read-root (->gc/helper thing))])
+    (clear-active-roots!)
+    loc))
+
+;; ->gc/helper : (or/c flat? pair?) -> root?
+(define (->gc/helper thing)
   (cond
     [(heap-value? thing) 
-     (let ([flat/loc (collector:alloc-flat thing)])
-       (read-root (make-env-root flat/loc)))]
+     (let* ([flat/loc (collector:alloc-flat thing)]
+            [flat/root (make-env-root flat/loc)])
+       (begin
+         (add-active-root! flat/root)
+         flat/root))]
     [(pair? thing) 
-     (collector:cons (scheme->gc (car thing)) (scheme->gc (cdr thing)))]))
+     (let* ([pair/loc 
+             (collector:cons (->gc/helper (car thing))
+                             (->gc/helper (cdr thing)))]
+            [pair/root (make-env-root pair/loc)])
+       (begin
+         (add-active-root! pair/root)
+         pair/root))]))
 
 (define (gc->scheme loc)
   (define-struct an-unset ())

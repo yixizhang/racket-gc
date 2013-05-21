@@ -52,7 +52,7 @@
           (provide/contract (gc:deref (location? . -> . heap-value?)))
           
           (provide/contract (gc:alloc-flat (heap-value? . -> . location?)))
-          (provide/contract (gc:cons (location? location? . -> . location?)))
+          (provide/contract (gc:cons ((or/c location? root?) (or/c location? root?) . -> . location?)))
           (provide/contract (gc:closure (closure-code? (vectorof location?) . -> . location?))) 
 
           (provide/contract (gc:closure-code-ptr (location? . -> . closure-code?)))

@@ -148,6 +148,20 @@
 (define (add-global-root! root)
   (set! global-roots (cons root global-roots)))
 
+(define active-roots empty)
+
+(provide/contract (add-active-root! (root? . -> . void?)))
+(define (add-active-root! root)
+  (set! active-roots (cons root active-roots)))
+
+(provide/contract (get-active-roots (-> (listof root?))))
+(define (get-active-roots)
+  (filter is-mutable-root? active-roots))
+
+(provide/contract (clear-active-roots! (-> void?)))
+(define (clear-active-roots!)
+  (set! clear-active-roots! empty))
+
 (provide get-root-set)
 (define-syntax (get-root-set stx)
   (syntax-case stx ()
@@ -164,6 +178,7 @@
                     (error 'get-root-set "expected a location, given ~e" root-id))
                 ...)
           (get-global-roots)
+          (get-active-roots)
           (stack-roots)))]
     [(_ e ...)
      (let ([err (ormap (λ (x) (and (not (identifier? x)) x)) (syntax->list #'(e ...)))])

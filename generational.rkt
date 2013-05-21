@@ -43,16 +43,24 @@
   (heap-set! (+ ptr 1) fv)
   ptr)
 
+;; ->location : (or/c location? root?) . -> . location?
+(define (->location thing)
+  (cond
+    [(location? thing) thing]
+    [(root? thing) (read-root thing)]))
+
 ;; gc:cons : loc loc -> loc
 ;; hd and tl are guaranteed to have been earlier
 ;; results from either gc:alloc-flat or gc:cons
 (define (gc:cons hd tl)
   (define ptr (alloc 3 hd tl))
-  (define head (track/loc hd))
-  (define tail (track/loc tl))
+  (define hd/loc (->location hd))
+  (define tl/loc (->location tl))
+  (define head (track/loc hd/loc))
+  (define tail (track/loc tl/loc))
   (when (and (= ptr 2)
-             (or (need-forwarding-pointers? hd)
-                 (need-forwarding-pointers? tl)))
+             (or (need-forwarding-pointers? hd/loc)
+                 (need-forwarding-pointers? tl/loc)))
     (free-1st-gen))
   (heap-set! ptr 'pair)
   (heap-set! (+ ptr 1) head)
