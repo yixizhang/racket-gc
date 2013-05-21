@@ -238,7 +238,7 @@
   (define ss (track/loc s))
   (define fields (for/vector ([v (in-vector fields-value)])
                    (track/loc v)))
-  (when (and (= next 2)
+  (when (and (= next 0)
              (or (need-forwarding-pointers? s)
                  (need-forwarding-pointers? fv-roots)))
     (free-1st-gen))
