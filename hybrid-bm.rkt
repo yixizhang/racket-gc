@@ -322,15 +322,17 @@
   (heap-set!/bm status-word 'in)
   (set! current-heap-operations 0)
 
-  ;; collections
+  ;; young->old live objects copying
   (make-pointers-to-2nd-gen-roots 0)
   (traverse/roots (get-root-set))
   (traverse/roots some-roots)
   (traverse/roots more-roots)
   (forward/pointers (+ 1 table-start-word))
+  ;; only free/mark-white! when tree traversal is done
   (when (= 0 (heap-ref/bm tracing-head-word))
-    (free/mark-white! 2nd-gen-start)
-    (heap-set!/bm status-word 'out))
+    (free/mark-white! 2nd-gen-start))
+  ;; ensure heap operations are only recorded during collection phase
+  (heap-set!/bm status-word 'out)
 
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
