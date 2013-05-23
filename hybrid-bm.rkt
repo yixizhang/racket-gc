@@ -330,7 +330,6 @@
   (forward/pointers (+ 1 table-start-word))
   (when (= 0 (heap-ref/bm tracing-head-word))
     (free/mark-white! 2nd-gen-start)
-    (check/tag 2nd-gen-start)
     (heap-set!/bm status-word 'out))
 
   ;; metrics recording and print-out

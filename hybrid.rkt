@@ -642,7 +642,7 @@
                 (free/mark-white! (+ i 4))]
       [(struct-instance) (heap-set! i 'white-struct-instance)
                          (free/mark-white! (+ i 2 (heap-ref (+ 3 (heap-ref (+ i 1))))))]
-      [(white-pair cont) (heap-set! i 'free)
+      [(white-pair) (heap-set! i 'free)
                          (heap-set! (+ i 1) 'free)
                          (heap-set! (+ i 2) 'free)
                          (heap-set! volume-word (- (heap-ref volume-word) 3))
