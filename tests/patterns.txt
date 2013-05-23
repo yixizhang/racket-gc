@@ -1,0 +1,7 @@
+flat
+cons (tree/list, first/rest, balances/unbalanced)
+closure
+e.g. (let ([x 1] [y 2] [z 3] [w 4] [a 5]) (lambda (b) (+ x y z w a b)))
+vector
+struct
+mixer
