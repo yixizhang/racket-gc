@@ -11,3 +11,15 @@
       (trigger-gc 10)
       (if (traverse-one obj) (loop (- i 1)) 'failed))))
 (loop 100)
+
+#|
+benchmark result:
+
+generational collector:
+peak heap size is 100%, average heap size is 49%
+heap operations: peak 1529, average 333, total 36970
+
+hybrid collector:
+peak heap size is 25%, average heap size is 18%
+heap operations: peak 765, average 487, total 53080
+|#
