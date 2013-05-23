@@ -336,7 +336,7 @@
 
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
-  (set! total-heap-size (+ (heap-ref/bm volume-word) total-heap-size))
+  (set! total-heap-size (+ (heap-ref volume-word) total-heap-size))
   (printf "peak heap size is ~s%, average heap size is ~s%\n"
           (round (/ (* 100 peak-heap-size) (- 2nd-gen-size 1st-gen-size)))
           (round (/ (* 100 (/ total-heap-size heap-size-check-time)) 
@@ -639,9 +639,9 @@
   (cond
     [next
       ;; update peak heap size
-      (heap-set!/bm volume-word (+ n (heap-ref/bm volume-word)))
-      (when (> (heap-ref/bm volume-word) peak-heap-size)
-        (set! peak-heap-size (heap-ref/bm volume-word)))
+      (heap-set! volume-word (+ n (heap-ref volume-word)))
+      (when (> (heap-ref volume-word) peak-heap-size)
+        (set! peak-heap-size (heap-ref volume-word)))
 
       ;; incremental collection
       (heap-set!/bm step-count-word (+ n (heap-ref/bm step-count-word)))
