@@ -80,16 +80,20 @@
 ;; gc:first : loc -> loc
 ;; must signal an error of pr-loc does not point to a pair
 (define (gc:first pr-loc)
-  (if (equal? (heap-ref/check! pr-loc) 'pair)
-      (heap-ref/check! (+ pr-loc 1))
-      (error 'first "non pair @ ~s" pr-loc)))
+  (define tag (heap-ref/check! pr-loc))
+  (case tag
+    [(cons) (heap-ref/check! (+ pr-loc 1))]
+    [(frwd) (gc:first (heap-ref/check! (+ pr-loc 1)))]
+    [else (error 'first "non pair @ ~s" pr-loc)]))
 
 ;; gc:rest : loc -> loc
 ;; must signal an error of pr-loc does not point to a pair
 (define (gc:rest pr-loc)
-  (if (equal? (heap-ref/check! pr-loc) 'pair)
-      (heap-ref/check! (+ pr-loc 2))
-      (error 'first "non pair @ ~s" pr-loc)))
+  (define tag (heap-ref/check! pr-loc))
+  (case tag
+    [(cons) (heap-ref/check! (+ pr-loc 2))]
+    [(frwd) (gc:rest (heap-ref/check! (+ pr-loc 1)))]
+    [else (error 'rest "non pair @ ~s" pr-loc)]))
 
 ;; gc:flat? : loc -> boolean
 ;; loc is guaranteed to have been an earlier
@@ -112,24 +116,26 @@
 ;; gc:set-first! : loc loc -> void
 ;; must signal an error of pr-loc does not point to a pair
 (define (gc:set-first! pr-loc new)
-  (if (gc:cons? pr-loc)
-      (begin
-        (heap-set! (+ pr-loc 1) new)
-        (when (and (2nd-gen? pr-loc)
-                   (1st-gen? new))
-          (table/alloc (+ pr-loc 1) new)))
-      (error 'set-first! "non pair @ ~s" pr-loc)))
+  (cond
+    [(gc:cons? pr-loc)
+     (define loc (track/loc pr-loc))
+     (heap-set! (+ loc 1) new)
+     (when (and (2nd-gen? loc)
+                (1st-gen? new))
+       (table/alloc (+ loc 1) new))]
+    [else (error 'set-first! "non pair @ ~s" pr-loc)]))
 
 ;; gc:set-rest! : loc loc -> void
 ;; must signal an error of pr-loc does not point to a pair
 (define (gc:set-rest! pr-loc new) 
-  (if (gc:cons? pr-loc)
-      (begin
-        (heap-set! (+ pr-loc 2) new)
-        (when (and (2nd-gen? pr-loc)
-                   (1st-gen? new))
-          (table/alloc (+ pr-loc 2) new)))
-      (error 'set-rest! "non pair @ ~s" pr-loc)))
+  (cond
+    [(gc:cons? pr-loc)
+     (define loc (track/loc pr-loc))
+     (heap-set! (+ loc 2) new)
+     (when (and (2nd-gen? loc)
+                (1st-gen? new))
+       (table/alloc (+ loc 2) new))]
+    [else (error 'set-rest! "non pair @ ~s" pr-loc)]))
 
 ;; gc:closure : heap-value (vectorof loc) -> loc
 ;; allocates a closure with 'code-ptr' and the free variables
@@ -201,31 +207,36 @@
 
 (define (gc:vector-length loc)
   (if (gc:vector? loc)
-      (heap-ref (+ loc 1))
+      (heap-ref (+ (track/loc loc) 1))
       (error 'gc:vector-length "non vector @ ~s" loc)))
 
 (define (gc:vector-ref loc number)
   (unless (gc:vector? loc)
     (error 'gc:vector-ref "non vector @ ~s" loc))
+
+  (define v-loc (track/loc loc))
   (cond
-    [(< number (gc:vector-length loc)) (heap-ref (+ loc 2 number))]
+    [(< number (gc:vector-length loc)) (heap-ref (+ v-loc 2 number))]
     [else (error 'gc:vector-ref 
-                 "vector @ ~s index ~s  out of range"
-                 loc number)]))
+                 "vector @ ~s index ~s out of range"
+                 v-loc 
+                 number)]))
 
 (define (gc:vector-set! loc number thing)
   (unless (gc:vector? loc)
     (error 'gc:vector-set! "non vector @ ~s" loc))
+
+  (define v-loc (track/loc loc))
   (cond 
-    [(< number (gc:vector-length loc)) 
-     (begin
-       (heap-set! (+ loc 2 number) thing)
-       (when (and (2nd-gen? loc)
-                  (1st-gen? thing))
-         (table/alloc (+ loc 2 number) thing)))]
+    [(< number (gc:vector-length v-loc)) 
+     (heap-set! (+ v-loc 2 number) thing)
+     (when (and (2nd-gen? v-loc)
+                (1st-gen? thing))
+       (table/alloc (+ v-loc 2 number) thing))]
     [else (error 'gc:vector-set! 
                  "vector @ ~s index ~s out of range"
-                 loc number)]))
+                 v-loc 
+                 number)]))
 
 ;; struct related
 (define (gc:alloc-struct name parent fields-count)
