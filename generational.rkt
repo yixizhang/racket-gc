@@ -277,17 +277,23 @@
 
 ;; alloc : number[size] roots roots -> loc
 (define (alloc n some-roots more-roots)
-  (define addr (find-free-space 2 (1st-gen-size) n))
+  (define addr (heap-ref 0))
   (cond 
-    [addr addr]
+    [(no-1st-collection? addr n)
+     (heap-set! 0 (+ addr n))
+     addr]
     [else
      (collect-garbage some-roots more-roots)
      (unless (or (need-forwarding-pointers? some-roots)
                  (need-forwarding-pointers? more-roots))
        (free-1st-gen))
-     (unless (<= (+ 2 n) (1st-gen-size))
+     (unless (no-1st-collection? 2 n)
        (error 'alloc "no space"))
+     (heap-set! 0 (+ 2 n))
      2]))
+
+(define (no-1st-collection? start size)
+  (<= (+ start size) (1st-gen-size)))
 
 (define (need-forwarding-pointers? thing)
   (cond
@@ -478,7 +484,7 @@
   (forward/roots (get-root-set))
   (forward/roots some-roots)
   (forward/roots more-roots)
-  (forward/pointers (+ 1 (2nd-gen-size))))
+  (forward/pointers (+ 1 table-start)))
 
 ;; forward/roots : loc/(listof loc) -> loc
 ;; move every thing reachable from 'roots'

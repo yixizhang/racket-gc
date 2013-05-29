@@ -4,6 +4,7 @@
 (define 1st-gen-size "size of young generation")
 (define 2nd-gen-size "size of old generation")
 (define 2nd-gen-start "start position to allocate objects in old generation")
+(define alloc-word "word represents the next location to allocate object in young generation")
 (define status-word "current phase of old generation incremental gc")
 (define volume-word "current total size of objects in old generation")
 (define step-count-word "work count for each tracing round")
@@ -16,11 +17,13 @@
   (set! 1st-gen-size (round (* (heap-size) 1/4)))
   (set! 2nd-gen-size (round (* (heap-size) 7/8)))
   (set! 2nd-gen-start (+ 4 1st-gen-size))
+  (set! alloc-word 0)
   (set! status-word 1st-gen-size)
   (set! volume-word (+ 1 1st-gen-size))
   (set! step-count-word (+ 2 1st-gen-size))
   (set! tracing-head-word (+ 3 1st-gen-size))
   (set! table-start-word 2nd-gen-size)
+  (heap-set! alloc-word 1)
   (heap-set! status-word 'not-in-gc)
   (heap-set! volume-word 0)
   (heap-set! step-count-word 0)
@@ -65,7 +68,7 @@
   (define tl/loc (->location tl))
   (define head (track/loc hd/loc))
   (define tail (track/loc tl/loc))
-  (when (and (= ptr 0)
+  (when (and (= ptr 1)
              (or (need-forwarding-pointers? hd/loc)
                  (need-forwarding-pointers? tl/loc)))
     (free-1st-gen))
@@ -139,7 +142,7 @@
                       '()))
   (define updated-free-vars (for/vector ([v (in-vector free-vars)])
                       (track/loc v)))
-  (when (and (= next 0)
+  (when (and (= next 1)
              (need-forwarding-pointers? fv-vars))
     (free-1st-gen))
   (heap-set! next 'proc)
@@ -181,7 +184,7 @@
 (define (gc:vector length loc)
   (define next (alloc (+ length 2) loc #f))
   (define l (track/loc loc))
-  (when (and (= next 0)
+  (when (and (= next 1)
              (need-forwarding-pointers? loc))
     (free-1st-gen))
   (heap-set! next 'vector)
@@ -228,7 +231,7 @@
 (define (gc:alloc-struct name parent fields-count)
   (define next (alloc 4 parent #f))
   (define p (and parent (track/loc parent)))
-  (when (and (= next 0)
+  (when (and (= next 1)
              (need-forwarding-pointers? parent))
     (free-1st-gen))
   (heap-set! next 'struct)
@@ -246,7 +249,7 @@
   (define ss (track/loc s))
   (define fields (for/vector ([v (in-vector fields-value)])
                    (track/loc v)))
-  (when (and (= next 0)
+  (when (and (= next 1)
              (or (need-forwarding-pointers? s)
                  (need-forwarding-pointers? fv-roots)))
     (free-1st-gen))
@@ -294,17 +297,23 @@
 
 ;; alloc : number[size] roots roots -> loc
 (define (alloc n some-roots more-roots)
-  (define addr (find-free-space 0 1st-gen-size n))
+  (define addr (heap-ref/check! alloc-word))
   (cond 
-    [addr addr]
+    [(enough-spaces-on-young-heap? addr n)
+     (heap-set! alloc-word (+ addr n))
+     addr]
     [else
      (collect-garbage some-roots more-roots)
      (unless (or (need-forwarding-pointers? some-roots)
                  (need-forwarding-pointers? more-roots))
        (free-1st-gen))
-     (unless (<= (+ 0 n) 1st-gen-size)
+     (unless (enough-spaces-on-young-heap? 1 n)
        (error 'alloc "object is larget than young generation"))
-     0]))
+     (heap-set! alloc-word (+ 1 n))
+     1]))
+
+(define (enough-spaces-on-young-heap? start size)
+  (<= (+ start size) 1st-gen-size))
 
 (define (need-forwarding-pointers? thing)
   (cond
@@ -315,7 +324,7 @@
 
 ;; collect-garbage : roots roots -> void
 (define (collect-garbage some-roots more-roots)
-  (make-pointers-to-2nd-gen-roots 0)
+  (make-pointers-to-2nd-gen-roots 1)
   (traverse/roots (get-root-set))
   (traverse/roots some-roots)
   (traverse/roots more-roots)
@@ -484,11 +493,11 @@
      (forward/pointers (+ loc 2))]))
 
 (define (free-1st-gen)
-  (for ([i (in-range 0 1st-gen-size)])
+  (for ([i (in-range 1 1st-gen-size)])
     (heap-set! i 'free)))
 
 (define (1st-gen? loc)
-  (and (>= loc 0)
+  (and (>= loc 1)
        (< loc 1st-gen-size)))
 
 (define (2nd-gen? loc)
@@ -953,19 +962,19 @@
   (heap-set! tracing-head-word 0)
   (heap-set! table-start-word (+ table-start-word 1)))
 ;; test for forward/pointers
-(let ([test-heap (vector 2 'left 'flat 2
+(let ([test-heap (vector 3 'flat 2 'free
                          'free 'free 'free 'free
                          'not-in-gc 0 0 0
-                         'vector 1 2 'free
+                         'vector 1 1 'free
                          'free 'free 'free 'free
                          'free 'free 'free 'free
                          'free 'free 'free 'free
-                         29 14 2 'free)])
+                         29 14 1 'free)])
   (test (with-heap test-heap
                    (test-init 32)
                    (forward/pointers 29)
                    test-heap)
-        (vector 2 'left 'frwd 15
+        (vector 3 'frwd 15 'free
                 'free 'free 'free 'free
                 'not-in-gc 2 2 0
                 'vector 1 15 'flat
