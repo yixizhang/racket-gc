@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../collector.rkt" 256)
+(allocator-setup "../collector.rkt" 512)
 (define (build-one) empty)
 (define (traverse-one x1) (empty? x1))
 (define (build-list n)
