@@ -1,0 +1,11 @@
+#! /bin/bash
+rm basic/*.txt 2> /dev/null
+for c in generational hybrid;
+do
+    cp ../$c-bm.rkt collector.rkt 2> /dev/null
+    for test in `ls basic/*.rkt`;
+    do
+        echo "$c -> $test"
+        racket runner.rkt $c $test
+    done
+done

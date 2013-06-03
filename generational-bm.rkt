@@ -1,4 +1,5 @@
 #lang plai/gc2/collector
+(require "caches.rkt")
 
 ;; config for collection
 (define alloc-word "next location of young generation allocation")
@@ -10,14 +11,30 @@
 (define volume 0)
 (define peak-heap-size 0)
 (define heap-size-check-time 0)
-(define total-heap-size 0)
+(define all-heap-size empty)
 (define peak-heap-operations 0)
 (define current-heap-operations 0)
 (define heap-operation-check-time 0)
 (define total-heap-operations 0)
 
+;; print-metrics
+(provide print-metrics)
+(define (print-metrics)
+  (define out (open-output-string))
+  (fprintf out 
+           "heap size: peak ~s\n"
+           peak-heap-size)
+  (fprintf out
+           "heap operations: peak ~s, average ~s, total ~s\n"
+           peak-heap-operations
+           (round (/ total-heap-operations heap-operation-check-time))
+           total-heap-operations)
+  (values out all-heap-size))
+
 ;; init-allocator : -> void
 (define (init-allocator)
+  (unless (= 0 (modulo (heap-size) 256))
+    (error 'init-allocator "heap size is not power of 256"))
   (set! alloc-word 0)
   (set! status-word 1)
   (heap-set!/bm alloc-word 2)
@@ -599,19 +616,11 @@
   (heap-set!/bm status-word 'out)
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
-  (set! total-heap-size (+ volume total-heap-size))
-  (printf "peak heap size is ~s%, average heap size is ~s%\n"
-          (round (/ (* 100 peak-heap-size) (- (2nd-gen-size) (1st-gen-size))))
-          (round (/ (* 100 (/ total-heap-size heap-size-check-time)) 
-                    (- (2nd-gen-size) (1st-gen-size)))))
+  (set! all-heap-size (append all-heap-size (list volume)))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))
-  (set! total-heap-operations (+ current-heap-operations total-heap-operations))
-  (printf "heap operations: peak ~s, average ~s, total ~s\n"
-          peak-heap-operations
-          (round (/ total-heap-operations heap-operation-check-time))
-          total-heap-operations))
+  (set! total-heap-operations (+ current-heap-operations total-heap-operations)))
 
 ;; forward/roots : loc/(listof loc) -> loc
 ;; move every thing reachable from 'roots'
@@ -772,15 +781,17 @@
        (< loc (2nd-gen-size))))
 
 (define (heap-ref/bm loc)
+  (define cycles (cal-cycles loc))
   (case (heap-ref status-word)
     [(in)
-     (set! current-heap-operations (add1 current-heap-operations))
+     (set! current-heap-operations (+ cycles current-heap-operations))
      (heap-ref loc)]
     [else (heap-ref loc)]))
 
 (define (heap-set!/bm loc thing)
+  (define cycles (cal-cycles loc))
   (case (heap-ref/bm status-word)
     [(in)
-     (set! current-heap-operations (add1 current-heap-operations))
+     (set! current-heap-operations (+ cycles current-heap-operations))
      (heap-set! loc thing)]
     [else (heap-set! loc thing)]))

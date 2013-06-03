@@ -1,0 +1,7 @@
+
+heap size: peak 159
+heap operations: peak 1400, average 296, total 235279
+generational
+heap size: peak 103
+heap operations: peak 1086, average 496, total 384738
+hybrid
