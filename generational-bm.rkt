@@ -433,6 +433,7 @@
                             (when (2nd-gen? loc) (traverse/roots loc)))
                           (make-pointers-to-2nd-gen-roots (+ start 2 fields-count))]
        [(frwd) (define loc (heap-ref/bm (+ start 1)))
+               (traverse/roots loc)
                (case (heap-ref/bm loc)
                  [(flat) (make-pointers-to-2nd-gen-roots (+ start 2))]
                  [(pair) (make-pointers-to-2nd-gen-roots (+ start 3))]
