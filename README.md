@@ -19,6 +19,25 @@ Collector
 * Generational + Mark-Sweep
 * Generational + Incremental Mark-Swe
 
+Benchmark
+---------
+#### Caching
+* Direct Mapped (E=1)
+* Direct Mapped (E=2)
+* Write-through
+* Write-back
+
+#### Memory Allocation
+* flat only
+* pair
+* list
+* balanced tree
+* unbalanced tree with nodes all linked by `first` of `cons`
+* closure
+* vector
+* struct
+* mixer
+
 Data Tag
 ----------
 * flat
