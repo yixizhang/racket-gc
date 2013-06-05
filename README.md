@@ -14,12 +14,12 @@ To build garbage collector that's easy to benchmark and not have to touch interp
 * [Uniprocessor Garbage Collection Techniques](https://ritdml.rit.edu/bitstream/handle/1850/5112/PWilsonProceedings1992.pdf)
 * [On-the-Fly Garbage Collection](http://pdf.aminer.org/000/017/456/on_the_fly_garbage_collection_an_exercise_in_cooperation.pdf)
 
-Collectors
-----------
+Collector
+---------
 * Generational + Mark-Sweep
-* Generational + Incremental Mark-Sweep
+* Generational + Incremental Mark-Swe
 
-Data Tags
+Data Tag
 ----------
 * flat
 * pair
@@ -28,7 +28,7 @@ Data Tags
 * structure type
 * structure instance
 
-Heap values
+Heap value
 -----------
 * number
 * symbol
@@ -41,3 +41,9 @@ Heap values
 * void
 * empty
 * closure-code
+
+Known Issues
+------------
+* `plai/gc2/mutator` interpret programs from `racket` syntax to gc level, but it is not that extensible. As the syntax it supports is limited and there's no easy to include libraries by calling `require` but have to add function wrappers inside `plai/gc2/mutator.rkt`.
+* Incremental Collector is not that incremental. **Free and Mark** white objects are done in one scan.
+* `string` and `regexp`, `byte-regexp` should not be stored as heap values but instead in their own data types.
