@@ -1,18 +1,17 @@
 #lang plai/gc2/mutator
-(allocator-setup "../collector.rkt" 1024)
+(allocator-setup "../collector.rkt" 2048)
 (define (build-one) empty)
 (define (traverse-one x1) (empty? x1))
 (define (build-tree n)
   (cond
     [(= n 0) (cons #f #f)]
-    [else (cons (build-tree (- n 1))
-                (build-tree (- n 1)))]))
+    [else (cons (build-tree (- n 1)) #f)]))
 (define (trigger-gc n)
-  (if (zero? n) 0 (begin (build-tree 3) (trigger-gc (- n 1)))))
+  (if (zero? n) 0 (begin (build-tree 10) (trigger-gc (- n 1)))))
 (define (loop i)
   (if (zero? i)
     'passed
     (let ((obj (build-one)))
       (trigger-gc 10)
       (if (traverse-one obj) (loop (- i 1)) 'failed))))
-(loop 100)
+(loop 20)
