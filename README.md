@@ -17,7 +17,7 @@ To build garbage collector that's easy to benchmark and not have to touch interp
 Collector
 ---------
 * Generational + Mark-Sweep
-* Generational + Incremental Mark-Swe
+* Generational + Incremental Mark-Sweep
 
 Benchmark
 ---------
