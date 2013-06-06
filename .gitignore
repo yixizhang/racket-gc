@@ -21,3 +21,6 @@ paper/*
 # compiled directory
 compiled/*
 */compiled/*
+
+/benchmarks/collector.rkt
+/benchmarks/basic/*.txt

@@ -28,7 +28,7 @@
 ;; all records
 ~s\n"
            peak-heap-size
-           all-heap-size)
+           (reverse all-heap-size))
   (fprintf out
            ";; # of cycles for heap operation per collection
 ;; largest
@@ -341,6 +341,12 @@
   (cond 
     [(enough-space-on-young-heap? addr n)
      (heap-set!/bm alloc-word (+ addr n))
+
+     ;; update and record allocated spaces
+     (set! volume (+ n volume))
+     (set! heap-size-check-time (add1 heap-size-check-time))
+     (set! all-heap-size (cons volume all-heap-size))
+
      addr]
     [else
      (collect-garbage some-roots more-roots)
@@ -350,6 +356,12 @@
      (unless (enough-space-on-young-heap? 2 n)
        (error 'alloc "no space"))
      (heap-set!/bm alloc-word (+ 2 n))
+     
+     ;; update and record allocated spaces
+     (set! volume (+ n volume))
+     (set! heap-size-check-time (add1 heap-size-check-time))
+     (set! all-heap-size (cons volume all-heap-size))
+     
      2]))
 
 (define (enough-space-on-young-heap? start size)
@@ -418,6 +430,10 @@
          [else (error 'find-free-space "wrong tag @ ~s" start)])])))
 
 (define (2nd-gen-gc some-roots more-roots)
+  ;; preparation for allocated-spaces update
+  ;; use small generation as base
+  (set! volume (- (heap-ref alloc-word) 2))
+
   (define start (1st-gen-size))
   (mark-white! start)
   (traverse/roots (get-root-set))
@@ -563,24 +579,22 @@
           [(= 2 spaces-so-far) (heap-set!/bm last-start 'free-2)
                                (heap-set!/bm (+ 1 last-start) #f)
                                (heap-set!/bm (if prev (+ prev 1) free-list-head)
-                                             last-start)
-                               
-                               ;; update volume
-                               (set! volume (- volume 2))]
+                                             last-start)]
           [else (heap-set!/bm last-start 'free-n)
                 (heap-set!/bm (+ 1 last-start) #f)
                 (heap-set!/bm (+ 2 last-start) spaces-so-far)
                 (heap-set!/bm (if prev (+ prev 1) free-list-head)
-                              last-start)
-                
-                ;; update volume
-                (set! volume (- volume spaces-so-far))])]
+                              last-start)])]
        [else (void)])]
     [else
       (define tag (heap-ref/bm loc))
       (case tag
         [(flat pair proc vector struct struct-instance)
          (define length (object-length loc))
+
+         ;; update allocated-spaces by measure live objects
+         (set! volume (+ volume length))
+
          (cond
            [(and last-start
                  spaces-so-far
@@ -595,10 +609,6 @@
               [else (heap-set!/bm last-start 'free-n)
                     (heap-set!/bm (+ last-start 1) #f)
                     (heap-set!/bm (+ last-start 2) spaces-so-far)])
-
-            ;; update volume
-            (set! volume (- volume spaces-so-far))
-
             (if prev
               (heap-set!/bm (+ prev 1) last-start)
               (heap-set!/bm free-list-head last-start))
@@ -627,7 +637,9 @@
   (heap-set!/bm status-word 'out)
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
-  (set! all-heap-size (append all-heap-size (list volume)))
+  ;; because small generation is going to be swiped
+  (set! volume (- volume (- (heap-ref alloc-word) 2)))
+  (set! all-heap-size (cons volume all-heap-size))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))
@@ -722,16 +734,22 @@
   (define next (find-free-space (heap-ref/bm free-list-head) #f n))
   (cond
     [next
-      ;; update peak heap size
-      (set! volume (+ n volume))
-      (when (> volume peak-heap-size)
-        (set! peak-heap-size volume))
-
-      next]
+     ;; update peak heap size
+     (when (> volume peak-heap-size)
+       (set! peak-heap-size volume))
+     
+     ;; update allocated-spaces
+     (set! volume (+ n volume))
+     
+     next]
     [else
      (2nd-gen-gc some-roots more-roots)
      (define next (find-free-space (heap-ref/bm free-list-head) #f n))
      (unless next (error 'copy/alloc "no space"))
+     
+     ;; update allocated-spaces
+     (set! volume (+ n volume))
+     
      next]))
 
 ;; forward/ref : loc -> loc

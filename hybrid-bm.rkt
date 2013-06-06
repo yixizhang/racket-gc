@@ -36,7 +36,7 @@
 ;; all records
 ~s\n"
            peak-heap-size
-           all-heap-size)
+           (reverse all-heap-size))
   (fprintf out
            ";; # of cycles for heap operation per collection
 ;; largest
@@ -349,6 +349,12 @@
   (cond 
     [(enough-spaces-on-young-heap? addr n)
      (heap-set!/bm alloc-word (+ addr n))
+     
+     ;; update & record allocated-spaces
+     (set! volume (+ volume n))
+     (set! heap-size-check-time (add1 heap-size-check-time))
+     (set! all-heap-size (cons volume all-heap-size))
+     
      addr]
     [else
      (collect-garbage some-roots more-roots)
@@ -358,6 +364,12 @@
      (unless (enough-spaces-on-young-heap? 1 n)
        (error 'alloc "object is larget than young generation"))
      (heap-set!/bm alloc-word (+ 1 n))
+     
+     ;; update & record allocated-spaces
+     (set! volume (+ volume n))
+     (set! heap-size-check-time (add1 heap-size-check-time))
+     (set! all-heap-size (cons volume all-heap-size))
+     
      1]))
 
 (define (enough-spaces-on-young-heap? start size)
@@ -385,13 +397,17 @@
   (forward/pointers (+ 1 table-start-word))
   ;; only free/mark-white! when tree traversal is done
   (when (equal? #f (heap-ref/bm tracing-head-word))
+    ;; use spaces in small generation as base
+    (set! volume (- (heap-ref alloc-word) 1))
     (free/mark-white! 2nd-gen-alloc-start #f #f #f))
   ;; ensure heap operations are only recorded during collection phase
   (heap-set!/bm status-word 'out)
 
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
-  (set! all-heap-size (append all-heap-size (list volume)))
+  ;; small generation is going to be swiped
+  (set! volume (- (heap-ref alloc-word) 1))
+  (set! all-heap-size (cons volume all-heap-size))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))
@@ -700,7 +716,7 @@
       (unless (check/free next n)
         (error 'copy/alloc "collection crashed because old heap hit tracing stack @ ~s" next))
 
-      ;; update peak heap size
+      ;; update allocated-spaces
       (set! volume (+ n volume))
       (when (> volume peak-heap-size)
         (set! peak-heap-size volume))
@@ -795,8 +811,10 @@
       (case tag
         [(flat pair proc vector struct struct-instance)
          (mark-white! loc)
-
+         
          (define length (object-length loc))
+         ;; update allocated spaces
+         (set! volume (+ volume length))
          (cond
            [(and last-start
                  spaces-so-far
@@ -811,10 +829,6 @@
               [else (heap-set!/bm last-start 'free-n)
                     (heap-set!/bm (+ last-start 1) #f)
                     (heap-set!/bm (+ last-start 2) spaces-so-far)])
-
-            ;; update volume
-            (set! volume (- volume spaces-so-far))
-
             (if prev
                 (heap-set!/bm (+ prev 1) last-start)
                 (heap-set!/bm free-list-head last-start))

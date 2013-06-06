@@ -2,8 +2,6 @@ To-Do
 -----
 #### benchmark
 
-* Output metrics in a racket readable format.
-* Measure allocated spaces for the whole heap, not only on the big generation.
 * Benchmark with different ratio of small to big generation.
 * Benchmark different caching models.
 * More tests on `vector` and `structure`.
