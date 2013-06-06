@@ -21,15 +21,18 @@
         (read port)
         (read port)
         (define h (read port))
-        (plot-file
-         (list
-          (points
-           (for/list ([d (in-list g)]
-                      [x (in-naturals)])
-             (vector x d))
-           #:size 2)
-          (points
-           (for/list ([d (in-list h)]
-                      [x (in-naturals)])
-             (vector x h))
-           #:size 2)))))))
+        (with-handlers ([exn:fail?
+                          (void)])
+                       (plot-file
+                         (list
+                           (points
+                             (for/list ([d (in-list g)]
+                                        [x (in-naturals)])
+                                       (vector x d))
+                             #:size 2)
+                           (points
+                             (for/list ([d (in-list h)]
+                                        [x (in-naturals)])
+                                       (vector x h))
+                             #:size 2))
+                         plot-file))))))
