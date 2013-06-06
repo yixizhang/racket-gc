@@ -6,12 +6,13 @@
 (define all-results
   (for/list ([p (directory-list "basic" #:build? #t)]
              #:when (equal? "txt" (path-ext (path->string p))))
-    p))
+    (path->string p)))
 
 ;; read allocated-spaces records and plot out to .pdf files
 ;; plot data for two collectors on the same graph
 (for ([p (in-list all-results)])
   (let ([plot-path (path-with-ext (path-name p) "pdf")])
+    (printf "plotting data of ~s\n" p)
     (call-with-input-file p
       (λ (port)
         (read port)
@@ -22,17 +23,18 @@
         (read port)
         (define h (read port))
         (with-handlers ([exn:fail?
-                          (void)])
-                       (plot-file
-                         (list
-                           (points
-                             (for/list ([d (in-list g)]
-                                        [x (in-naturals)])
-                                       (vector x d))
-                             #:size 2)
-                           (points
-                             (for/list ([d (in-list h)]
-                                        [x (in-naturals)])
-                                       (vector x h))
-                             #:size 2))
-                         plot-file))))))
+                         (λ (exn)
+                           (printf "Err is ~s\n" exn))])
+          (plot-file
+           (list
+            (points
+             (for/list ([d (in-list g)]
+                        [x (in-naturals)])
+               (vector x d))
+             #:size 2)
+            (points
+             (for/list ([d (in-list h)]
+                        [x (in-naturals)])
+               (vector x h))
+             #:size 2))
+           plot-path))))))
