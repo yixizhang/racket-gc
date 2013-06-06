@@ -30,14 +30,25 @@
 (define (print-metrics)
   (define out (open-output-string))
   (fprintf out 
-           "heap size: peak ~s\n"
-           peak-heap-size)
+           ";; allocated spaces
+;; largest
+~s
+;; all records
+~s\n"
+           peak-heap-size
+           all-heap-size)
   (fprintf out
-           "heap operations: peak ~s, average ~s, total ~s\n"
+           ";; # of cycles for heap operation per collection
+;; largest
+~s
+;; average
+~s
+;; total
+~s\n"
            peak-heap-operations
            (round (/ total-heap-operations heap-operation-check-time))
            total-heap-operations)
-  (values out all-heap-size))
+  out)
 
 (define (init-allocator)
   (unless (= 0 (modulo (heap-size) 256))

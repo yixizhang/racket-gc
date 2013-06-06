@@ -1,5 +1,6 @@
 #! /bin/bash
 rm basic/*.txt 2> /dev/null
+rm basic/*.pdf 2> /dev/null
 for c in generational hybrid;
 do
     cp ../$c-bm.rkt collector.rkt 2> /dev/null
@@ -9,3 +10,4 @@ do
         racket runner.rkt $c $test
     done
 done
+#racket plot-graphs.rkt
