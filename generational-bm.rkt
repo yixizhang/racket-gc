@@ -323,7 +323,7 @@
   (heap-ref (+ instance 2 index)))
 
 (define (table/alloc pointer target)
-  (define next (heap-ref/bm (2nd-gen-size)))
+  (define next (heap-ref/bm table-start))
   (cond
     [(>= (+ next 2) (heap-size))
      (forward/pointers (+ 1 table-start))
@@ -333,7 +333,7 @@
     [else
      (heap-set!/bm next pointer)
      (heap-set!/bm (+ next 1) target)
-     (heap-set!/bm (2nd-gen-size) (+ next 2))]))
+     (heap-set!/bm table-start (+ next 2))]))
 
 ;; alloc : number[size] roots roots -> loc
 (define (alloc n some-roots more-roots)
