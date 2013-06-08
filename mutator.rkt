@@ -477,7 +477,7 @@
              
              (init-heap! (#%datum . heap-size) init-allocator)
              (when (gui-available?) 
-               (if (<= (#%datum . heap-size) 500)
+               (if (<= (#%datum . heap-size) 512)
                    (set-ui! (dynamic-require `plai/gc2/private/gc-gui 'heap-viz%))
                    (printf "Large heap; the heap visualizer will not be displayed.\n"))))))]
     [_ (raise-syntax-error 'mutator 
