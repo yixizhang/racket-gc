@@ -154,7 +154,7 @@
   (cond
     [(gc:cons? pr-loc)
      (define loc (track/loc pr-loc))
-     (heap-set! (+ loc 1) new)
+     (heap-set!/bm (+ loc 1) new)
      (when (and (2nd-gen? loc)
                 (1st-gen? new))
        (table/alloc (+ loc 1) new))]
@@ -166,7 +166,7 @@
   (cond
     [(gc:cons? pr-loc)
      (define loc (track/loc pr-loc))
-     (heap-set! (+ loc 2) new)
+     (heap-set!/bm (+ loc 2) new)
      (when (and (2nd-gen? loc)
                 (1st-gen? new))
        (table/alloc (+ loc 2) new))]
@@ -242,7 +242,7 @@
 
 (define (gc:vector-length loc)
   (if (gc:vector? loc)
-      (heap-ref (+ (track/loc loc) 1))
+      (heap-ref/bm (+ (track/loc loc) 1))
       (error 'gc:vector-length "non vector @ ~s" loc)))
 
 (define (gc:vector-ref loc number)
@@ -251,7 +251,7 @@
 
   (define v-loc (track/loc loc))
   (cond
-    [(< number (gc:vector-length loc)) (heap-ref (+ v-loc 2 number))]
+    [(< number (gc:vector-length loc)) (heap-ref/bm (+ v-loc 2 number))]
     [else (error 'gc:vector-ref 
                  "vector @ ~s index ~s out of range"
                  v-loc 
@@ -307,20 +307,20 @@
   next)
 
 (define (gc:struct-pred s instance)
-  (and (equal? (heap-ref s) 'struct)
-       (gc:struct-pred-helper s (heap-ref (+ instance 1)))))
+  (and (equal? (heap-ref/bm s) 'struct)
+       (gc:struct-pred-helper s (heap-ref/bm (+ instance 1)))))
 
 (define (gc:struct-pred-helper target s)
   (and s
        (or (= target s)
-           (gc:struct-pred-helper target (heap-ref (+ s 2))))))
+           (gc:struct-pred-helper target (heap-ref/bm (+ s 2))))))
 
 (define (gc:struct-select s instance index)
   (unless (gc:struct-pred s instance)
     (error 'gc:struct-select "value at ~a is not an instance of ~a" 
            instance
-           (heap-ref (+ 1 s))))
-  (heap-ref (+ instance 2 index)))
+           (heap-ref/bm (+ 1 s))))
+  (heap-ref/bm (+ instance 2 index)))
 
 (define (table/alloc pointer target)
   (define next (heap-ref/bm table-start))
@@ -760,8 +760,8 @@
     [(flat) (void)]
     [(pair) (gc:set-first! loc (forward/loc (heap-ref/bm (+ loc 1))))
             (gc:set-rest! loc (forward/loc (heap-ref/bm (+ loc 2))))
-            (forward/ref (heap-ref (+ loc 1)))
-            (forward/ref (heap-ref (+ loc 2)))]
+            (forward/ref (heap-ref/bm (+ loc 1)))
+            (forward/ref (heap-ref/bm (+ loc 2)))]
     [(proc) (define fv-count (heap-ref/bm (+ loc 2)))
             (for ([x (in-range 0 fv-count)])
               (define l (+ loc 3 x))

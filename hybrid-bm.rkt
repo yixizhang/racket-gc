@@ -156,7 +156,7 @@
   (cond
     [(gc:cons? pr-loc)
      (define loc (track/loc pr-loc))
-     (heap-set! (+ loc 1) new)
+     (heap-set!/bm (+ loc 1) new)
      (when (and (2nd-gen? loc)
                 (1st-gen? new))
        (table/alloc (+ loc 1) new))]
@@ -168,7 +168,7 @@
   (cond
     [(gc:cons? pr-loc)
      (define loc (track/loc pr-loc))
-     (heap-set! (+ loc 2) new)
+     (heap-set!/bm (+ loc 2) new)
      (when (and (2nd-gen? loc)
                 (1st-gen? new))
        (table/alloc (+ loc 2) new))]
