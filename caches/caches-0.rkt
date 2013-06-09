@@ -17,24 +17,25 @@
 
 ;; cal-cycles : location? -> number?
 (define (cal-cycles loc)
+  (define b/n (block/number loc))
   ;; check l1
   (define l1-offset (l1/offset loc))
   (cond
     ;; hit
-    [(= loc (vector-ref l1/cache l1-offset))
+    [(= b/n (vector-ref l1/cache l1-offset))
      1]
     ;; miss :-> check l2
     [else
       (define l2-offset (l2/offset loc))
       (cond
         ;; hit :-> overwrite l1/cache
-        [(= loc (vector-ref l2/cache l2-offset))
-         (vector-set! l1/cache l1-offset loc)
+        [(= b/n (vector-ref l2/cache l2-offset))
+         (vector-set! l1/cache l1-offset b/n)
          10]
         ;; miss :-> overwrite l1/cache and l2/cache
         [else
-          (vector-set! l1/cache l1-offset loc)
-          (vector-set! l2/cache l2-offset loc)
+          (vector-set! l1/cache l1-offset b/n)
+          (vector-set! l2/cache l2-offset b/n)
           100])]))
 
 (define (read/mem loc)

@@ -6,7 +6,7 @@
 
 (define coll-name (vector-ref (current-command-line-arguments) 0))
 (define test (vector-ref (current-command-line-arguments) 1))
-(define data-out-path (path-with-ext (path-name test) "txt"))
+(define data-out-path (path-with-ext (path-name test) "rktd"))
 (define plot-out-path (path-with-ext (string-append (path-name test)
                                                     "-"
                                                     coll-name)

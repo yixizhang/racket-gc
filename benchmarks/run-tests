@@ -1,13 +1,17 @@
 #! /bin/bash
-rm basic/*.txt 2> /dev/null
+rm basic/*.rktd 2> /dev/null
 rm basic/*.pdf 2> /dev/null
-for c in generational hybrid;
+for coll in generational hybrid;
 do
-    cp ../$c-bm.rkt collector.rkt 2> /dev/null
-    for test in `ls basic/*.rkt`;
+    cp ../collectors/$coll.rkt collector.rkt 2> /dev/null
+    for cache in `ls ../caches/`;
     do
-        echo "$c -> $test"
-        racket runner.rkt $c $test
+        cp ../caches/$cache cache.rkt 2> /dev/null
+        for test in `ls basic/*.rkt`;
+        do
+            echo "$coll & $cache -> $test"
+            racket runner.rkt $coll $test
+        done
     done
 done
 #racket plot-graphs.rkt

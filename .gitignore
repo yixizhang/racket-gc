@@ -18,9 +18,11 @@ Icon
 paper/*
 *.pdf
 
-# compiled directory
-compiled/*
-*/compiled/*
+# compiled
+*.dep
+*.zo
 
 /benchmarks/collector.rkt
+/benchmarks/cache.rkt
+/benchmarks/basic/*.rktd
 /benchmarks/basic/*.txt

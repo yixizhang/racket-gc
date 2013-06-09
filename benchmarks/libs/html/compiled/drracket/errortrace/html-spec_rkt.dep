@@ -1,1 +1,0 @@
-("5.3.1" ("dbeec2dce4f51ca7d37e810ae0416062ad2df9c8" . "48c886dcad292ee381330cf01e598dc28fbab99d") (collects #"racket" #"base.rkt") #"/Users/MetUrMaker/Dropbox/Dropbox/gc/html/sgml-reader.rkt" (collects #"racket" #"contract.rkt") (collects #"racket" #"base" #"lang" #"reader.rkt"))

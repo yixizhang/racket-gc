@@ -1,5 +1,5 @@
 #lang plai/gc2/collector
-(require "caches-0.rkt")
+(require "cache.rkt")
 
 ;; config for collection
 (define alloc-word "next location of young generation allocation")
@@ -48,17 +48,17 @@
     (error 'init-allocator "heap size is not power of 256"))
   (set! alloc-word 0)
   (set! status-word 1)
-  (heap-set!/bm alloc-word 2)
-  (heap-set!/bm status-word 'out)
+  (heap-set! alloc-word 2)
+  (heap-set! status-word 'out)
   (for ([i (in-range 2 (heap-size))])
-    (heap-set!/bm i 'free))
+    (heap-set! i 'free))
   (set! free-list-head (2nd-gen-size))
-  (heap-set!/bm (1st-gen-size) 'free-n)
-  (heap-set!/bm (+ 1 (1st-gen-size)) #f)
-  (heap-set!/bm (+ 2 (1st-gen-size)) (- (2nd-gen-size) (1st-gen-size)))
-  (heap-set!/bm free-list-head (1st-gen-size))
+  (heap-set! (1st-gen-size) 'free-n)
+  (heap-set! (+ 1 (1st-gen-size)) #f)
+  (heap-set! (+ 2 (1st-gen-size)) (- (2nd-gen-size) (1st-gen-size)))
+  (heap-set! free-list-head (1st-gen-size))
   (set! table-start (+ 1 (2nd-gen-size)))
-  (heap-set!/bm table-start (+ table-start 1)))
+  (heap-set! table-start (+ table-start 1)))
 
 ;; 1st gen takes 1/4 of entire heap
 (define (1st-gen-size)

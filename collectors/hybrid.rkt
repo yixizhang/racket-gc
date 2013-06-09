@@ -1,6 +1,6 @@
 #lang plai/gc2/collector
 (require racket/stream)
-(require "caches-0.rkt")
+(require "cache.rkt")
 
 ;; config for collection
 (define step-length 10)
@@ -54,7 +54,7 @@
   (unless (= 0 (modulo (heap-size) 256))
     (error 'init-allocator "heap size is not power of 256"))
   (for ([i (in-range 0 (heap-size))])
-    (heap-set!/bm i 'free))
+    (heap-set! i 'free))
   (set! 1st-gen-size (round (* (heap-size) 1/4)))
   (set! 2nd-gen-size (heap-size))
   (set! alloc-word 0)
