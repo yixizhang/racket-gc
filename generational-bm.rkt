@@ -1,5 +1,5 @@
 #lang plai/gc2/collector
-(require "caches.rkt")
+(require "caches-0.rkt")
 
 ;; config for collection
 (define alloc-word "next location of young generation allocation")
@@ -810,17 +810,14 @@
        (< loc (2nd-gen-size))))
 
 (define (heap-ref/bm loc)
-  (define cycles (cal-cycles loc))
-  (case (heap-ref status-word)
-    [(in)
-     (set! current-heap-operations (+ cycles current-heap-operations))
-     (heap-ref loc)]
-    [else (heap-ref loc)]))
+  (define-values (val cycles) (read/mem loc))
+  (let-values ([(s _) (read/mem status-word)])
+              (when (equal? 'in s)
+                (set! current-heap-operations (+ cycles current-heap-operations))))
+  val)
 
 (define (heap-set!/bm loc thing)
-  (define cycles (cal-cycles loc))
-  (case (heap-ref/bm status-word)
-    [(in)
-     (set! current-heap-operations (+ cycles current-heap-operations))
-     (heap-set! loc thing)]
-    [else (heap-set! loc thing)]))
+  (define cycles (write/mem loc thing))
+  (let-values ([(s _) (read/mem status-word)])
+              (when (equal? 'in s)
+                (set! current-heap-operations (+ cycles current-heap-operations)))))
