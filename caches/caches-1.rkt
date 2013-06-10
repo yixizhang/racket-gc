@@ -66,6 +66,10 @@
      (vector-set! (cache-block-slots cb/l1)
                   b/o
                   thing)
+     ;; also update record in l2/cache
+     (vector-set! (cache-block-slots (vector-ref l2/cache (l2/offset loc)))
+                  b/o
+                  thing)
      1]
     ;; miss -> check l2
     [else

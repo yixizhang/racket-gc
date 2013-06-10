@@ -69,15 +69,15 @@
   (set! tracing-head-word (+ 3 2nd-gen-start))
   (set! table-start-word 1st-gen-size)
 
-  (heap-set!/bm alloc-word 1)
-  (heap-set!/bm status-word 'out)
-  (heap-set!/bm 2nd-gen-alloc-start 'free-n)
-  (heap-set!/bm (+ 1 2nd-gen-alloc-start) #f)
-  (heap-set!/bm (+ 2 2nd-gen-alloc-start) (- 2nd-gen-size 2nd-gen-alloc-start))
-  (heap-set!/bm free-list-head 2nd-gen-alloc-start)
-  (heap-set!/bm step-count-word 0)
-  (heap-set!/bm tracing-head-word #f)
-  (heap-set!/bm table-start-word (+ table-start-word 1)))
+  (heap-set! alloc-word 1)
+  (heap-set! status-word 'out)
+  (heap-set! 2nd-gen-alloc-start 'free-n)
+  (heap-set! (+ 1 2nd-gen-alloc-start) #f)
+  (heap-set! (+ 2 2nd-gen-alloc-start) (- 2nd-gen-size 2nd-gen-alloc-start))
+  (heap-set! free-list-head 2nd-gen-alloc-start)
+  (heap-set! step-count-word 0)
+  (heap-set! tracing-head-word #f)
+  (heap-set! table-start-word (+ table-start-word 1)))
 
 ;; gc:deref : loc -> heap-value
 ;; must signal an error if fl-loc doesn't point to a flat value
@@ -398,7 +398,7 @@
   ;; only free/mark-white! when tree traversal is done
   (when (equal? #f (heap-ref/bm tracing-head-word))
     ;; use spaces in small generation as base
-    (set! volume (- (heap-ref alloc-word) 1))
+    (set! volume (- (heap-ref/bm alloc-word) 1))
     (free/mark-white! 2nd-gen-alloc-start #f #f #f))
   ;; ensure heap operations are only recorded during collection phase
   (heap-set!/bm status-word 'out)
@@ -406,7 +406,7 @@
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
   ;; small generation is going to be swiped
-  (set! volume (- (heap-ref alloc-word) 1))
+  (set! volume (- (heap-ref/bm alloc-word) 1))
   (set! all-heap-size (cons volume all-heap-size))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
@@ -1065,6 +1065,7 @@
 (define (step/finished?)
   (<= (heap-ref/bm step-count-word) 0))
 
+#|
 (print-only-errors #t)
 
 ;; test init
@@ -1119,3 +1120,4 @@
                        (test-init 32)
                        (copy/alloc 5 #f #f))
         "collection crashed because old heap hit tracing stack @ 26"))
+|#

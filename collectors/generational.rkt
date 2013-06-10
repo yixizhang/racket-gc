@@ -432,7 +432,7 @@
 (define (2nd-gen-gc some-roots more-roots)
   ;; preparation for allocated-spaces update
   ;; use small generation as base
-  (set! volume (- (heap-ref alloc-word) 2))
+  (set! volume (- (heap-ref/bm alloc-word) 2))
 
   (define start (1st-gen-size))
   (mark-white! start)
@@ -638,7 +638,7 @@
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
   ;; because small generation is going to be swiped
-  (set! volume (- volume (- (heap-ref alloc-word) 2)))
+  (set! volume (- volume (- (heap-ref/bm alloc-word) 2)))
   (set! all-heap-size (cons volume all-heap-size))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
