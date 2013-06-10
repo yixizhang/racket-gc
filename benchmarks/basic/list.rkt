@@ -2,17 +2,16 @@
 (allocator-setup "../collector.rkt" 1024)
 (define (build-one) empty)
 (define (traverse-one x1) (empty? x1))
-(define (build-tree n)
+(define (build-list n)
   (cond
-    [(= n 0) (cons #f #f)]
-    [else (cons (build-tree (- n 1))
-                (build-tree (- n 1)))]))
+    [(= n 0) empty]
+    [else (cons n (build-list (- n 1)))]))
 (define (trigger-gc n)
-  (if (zero? n) 0 (begin (build-tree 3) (trigger-gc (- n 1)))))
+  (if (zero? n) 0 (begin (build-list 20) (trigger-gc (- n 1)))))
 (define (loop i)
   (if (zero? i)
     'passed
     (let ((obj (build-one)))
       (trigger-gc 10)
       (if (traverse-one obj) (loop (- i 1)) 'failed))))
-(loop 100)
+(loop 10)

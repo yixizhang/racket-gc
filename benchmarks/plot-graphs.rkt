@@ -1,11 +1,12 @@
 #lang racket
 (require plot)
+(require racket/pretty)
 (require "utils.rkt")
 
 ;; all .txt files under /basic/ directory
 (define all-results
   (for/list ([p (directory-list "basic" #:build? #t)]
-             #:when (equal? "txt" (path-ext (path->string p))))
+             #:when (equal? "rktd" (path-ext (path->string p))))
     (path->string p)))
 
 ;; read allocated-spaces records and plot out to .pdf files
@@ -24,7 +25,7 @@
         (define h (read port))
         (with-handlers ([exn:fail?
                          (λ (exn)
-                           (printf "Err is ~s\n" exn))])
+                           (pretty-print exn))])
           (plot-file
            (list
             (points
@@ -35,6 +36,6 @@
             (points
              (for/list ([d (in-list h)]
                         [x (in-naturals)])
-               (vector x h))
+               (vector x d))
              #:size 2))
            plot-path))))))
