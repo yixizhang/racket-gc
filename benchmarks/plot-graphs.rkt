@@ -32,10 +32,18 @@
              (for/list ([d (in-list g)]
                         [x (in-naturals)])
                (vector x d))
-             #:size 2)
+             #:label "mark-sweep for big generation"
+             #:color "red"
+             #:size 2
+             #:sym 'triangle)
             (points
              (for/list ([d (in-list h)]
                         [x (in-naturals)])
                (vector x d))
-             #:size 2))
+             #:label "incremental mark-sweep for big generation"
+             #:color "blue"
+             #:size 2
+             #:sym 'square))
+           #:x-label "object allocation"
+           #:y-label "heap size"
            plot-path))))))
