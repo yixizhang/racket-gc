@@ -127,14 +127,14 @@
 ;; gc:first : loc -> loc
 ;; must signal an error of pr-loc does not point to a pair
 (define (gc:first pr-loc)
-  (if (equal? (heap-ref/bm pr-loc) 'pair)
+  (if (gc:cons? pr-loc)
       (heap-ref/bm (+ (track/loc pr-loc) 1))
       (error 'first "non pair @ ~s" pr-loc)))
 
 ;; gc:rest : loc -> loc
 ;; must signal an error of pr-loc does not point to a pair
 (define (gc:rest pr-loc)
-  (if (equal? (heap-ref/bm pr-loc) 'pair)
+  (if (gc:cons? pr-loc)
       (heap-ref/bm (+ (track/loc pr-loc) 2))
       (error 'rest "non pair @ ~s" pr-loc)))
 
