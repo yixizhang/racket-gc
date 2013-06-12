@@ -13,6 +13,6 @@
   (if (zero? i)
     'passed
     (let ((obj (build-one)))
-      (trigger-gc 10)
+      (trigger-gc 5)
       (if (traverse-one obj) (loop (- i 1)) 'failed))))
-(loop 20)
+(loop 10)

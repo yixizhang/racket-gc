@@ -14,4 +14,4 @@
     (let ((obj (build-one)))
       (trigger-gc 10)
       (if (traverse-one obj) (loop (- i 1)) 'failed))))
-(loop 20)
+(loop 10)

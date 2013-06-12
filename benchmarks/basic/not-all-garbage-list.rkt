@@ -10,8 +10,11 @@
   (if (zero? n) 0 (begin (build-list 20) (trigger-gc (- n 1)))))
 (define (loop i)
   (if (zero? i)
-    'passed
-    (let ((obj (build-one)))
-      (trigger-gc 5)
-      (if (traverse-one obj) (loop (- i 1)) 'failed))))
+      0
+      (let ((obj (build-one)))
+        (let ((not-garbage (build-list 5)))
+          (trigger-gc 5)
+          (if (traverse-one obj)
+              (+ (first not-garbage) (loop (- i 1)))
+              'failed)))))
 (loop 5)
