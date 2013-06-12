@@ -639,7 +639,6 @@
   (set! heap-size-check-time (add1 heap-size-check-time))
   ;; because small generation is going to be swiped
   (set! volume (- volume (- (heap-ref/bm alloc-word) 2)))
-  (set! all-heap-size (cons volume all-heap-size))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))

@@ -9,7 +9,8 @@
 (define 2nd-gen-start "start of old generation")
 (define 2nd-gen-alloc-start "start position to allocate objects in old generation")
 (define alloc-word "start of objects allocation for young generation")
-(define status-word "current phase of old generation incremental gc")
+(define status-word "current status of old generation incremental gc: in/out")
+(define gc-phase "current phase of old generation incremental gc: marking/not")
 (define free-list-head "head of free list")
 (define step-count-word "work count for each tracing round")
 (define tracing-head-word "head of tracing tree")
@@ -19,7 +20,8 @@
 (define volume 0)
 (define peak-heap-size 0)
 (define heap-size-check-time 0)
-(define all-heap-size empty)
+(define heap-size-in-marking empty)
+(define heap-size-out-marking empty)
 (define peak-heap-operations 0)
 (define current-heap-operations 0)
 (define heap-operation-check-time 0)
@@ -33,10 +35,13 @@
            ";; allocated spaces
 ;; largest
 ~s
-;; all records
+;; heap size during 2nd generation marking
+~s\n
+;; heap size out 2nd generation marking
 ~s\n"
            peak-heap-size
-           (reverse all-heap-size))
+           (reverse heap-size-in-marking)
+           (reverse heap-size-out-marking))
   (fprintf out
            ";; # of cycles for heap operation per collection
 ;; largest
@@ -64,6 +69,7 @@
 
   (set! 2nd-gen-alloc-start (+ 4 2nd-gen-start))
   (set! status-word 2nd-gen-start)
+  (set! gc-phase 'not)
   (set! free-list-head (+ 1 2nd-gen-start))
   (set! step-count-word (+ 2 2nd-gen-start))
   (set! tracing-head-word (+ 3 2nd-gen-start))
@@ -353,7 +359,12 @@
      ;; update & record allocated-spaces
      (set! volume (+ volume n))
      (set! heap-size-check-time (add1 heap-size-check-time))
-     (set! all-heap-size (cons volume all-heap-size))
+     (case gc-phase
+       [(marking) (set! heap-size-in-marking (cons volume heap-size-in-marking))
+                  (set! heap-size-out-marking (cons 0 heap-size-out-marking))]
+       [(not) (set! heap-size-in-marking (cons 0 heap-size-in-marking))
+              (set! heap-size-out-marking (cons volume heap-size-out-marking))]
+       [else (error 'set-heap-size "wrong phase of 2nd gc")])
      
      addr]
     [else
@@ -368,7 +379,12 @@
      ;; update & record allocated-spaces
      (set! volume (+ volume n))
      (set! heap-size-check-time (add1 heap-size-check-time))
-     (set! all-heap-size (cons volume all-heap-size))
+     (case gc-phase
+       [(marking) (set! heap-size-in-marking (cons volume heap-size-in-marking))
+                  (set! heap-size-out-marking (cons 0 heap-size-out-marking))]
+       [(not) (set! heap-size-in-marking (cons 0 heap-size-in-marking))
+              (set! heap-size-out-marking (cons volume heap-size-out-marking))]
+       [else (error 'set-heap-size "wrong phase of 2nd gc")])
      
      1]))
 
@@ -389,6 +405,9 @@
   (heap-set!/bm status-word 'in)
   (set! current-heap-operations 0)
 
+  ;; entering collection, entering marking phase
+  (set! gc-phase 'marking)
+
   ;; young->old live objects copying
   (make-pointers-to-2nd-gen-roots 1)
   (traverse/roots (get-root-set))
@@ -399,7 +418,10 @@
   (when (equal? #f (heap-ref/bm tracing-head-word))
     ;; use spaces in small generation as base
     (set! volume (- (heap-ref/bm alloc-word) 1))
-    (free/mark-white! 2nd-gen-alloc-start #f #f #f))
+    (free/mark-white! 2nd-gen-alloc-start #f #f #f)
+
+    ;; after free/mark-white!, leave marking phase
+    (set! gc-phase 'not))
   ;; ensure heap operations are only recorded during collection phase
   (heap-set!/bm status-word 'out)
 
@@ -407,7 +429,6 @@
   (set! heap-size-check-time (add1 heap-size-check-time))
   ;; small generation is going to be swiped
   (set! volume (- volume (- (heap-ref/bm alloc-word) 1)))
-  (set! all-heap-size (cons volume all-heap-size))
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))

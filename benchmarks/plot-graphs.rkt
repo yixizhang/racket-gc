@@ -22,7 +22,8 @@
         (read port)
         (read port)
         (read port)
-        (define h (read port))
+        (define h-in (read port))
+        (define h-out (read port))
         (with-handlers ([exn:fail?
                          (λ (exn)
                            (pretty-print exn))])
@@ -37,11 +38,19 @@
              #:size 2
              #:sym 'triangle)
             (points
-             (for/list ([d (in-list h)]
+             (for/list ([d (in-list h-in)]
                         [x (in-naturals)])
                (vector x d))
-             #:label "incremental mark-sweep for big generation"
+             #:label "during marking"
              #:color "blue"
+             #:size 2
+             #:sym 'square)
+            (points
+             (for/list ([d (in-list h-out)]
+                        [x (in-naturals)])
+               (vector x d))
+             #:label "out of marking"
+             #:color "yellow"
              #:size 2
              #:sym 'square))
            #:x-label "object allocation"
