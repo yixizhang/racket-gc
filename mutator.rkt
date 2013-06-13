@@ -13,7 +13,7 @@
          scheme/stxparam
          (for-syntax scheme/stxparam-exptime))
 
-(provide else require provide #%top all-defined-out
+(provide else require provide #%top all-defined-out all-from-out
          values
          test/location=? 
          test/value=?
@@ -64,6 +64,8 @@
           (mutator-procedure? procedure?)
           (mutator-procedure-arity-includes? procedure-arity-includes?)
           (mutator-file-position file-position)
+          (mutator-call-with-input-file call-with-input-file)
+          (mutator-current-command-line-arguments current-command-line-arguments)
 
           (mutator-string->number string->number)
           (mutator-string-append string-append)
@@ -175,8 +177,11 @@
                            (collector:deref (->address test)))
       (->address true)
       (->address false)))
-(define (mutator-when test proc)
-  (mutator-if test proc (void)))
+(define-syntax-rule (mutator-when test true)
+  (if (syntax-parameterize ([mutator-tail-call? #f])
+                           (collector:deref (->address test)))
+      (->address true)
+      (mutator-app void)))
 (define-syntax-rule (mutator-set! id e)
   (begin
     (set! id (->address e))
@@ -622,6 +627,18 @@
                                                    (collector:deref num))))
 (define (mutator-file-position port)
   (collector:alloc-flat (file-position (collector:deref port))))
+(define (mutator-call-with-input-file path/loc proc/loc)
+  (call-with-input-file (collector:deref path/loc)
+                        (deref-proc proc/loc)))
+(define (mutator-current-command-line-arguments)
+  (define args (current-command-line-arguments))
+  (define v (collector:vector (vector-length args) (collector:alloc-flat #f)))
+  (for ([val (in-vector args)]
+        [i (in-naturals)])
+       (collector:vector-set! v
+                              i
+                              (collector:alloc-flat val)))
+  v)
 
 ;; string related
 (define (mutator-string->number thing)

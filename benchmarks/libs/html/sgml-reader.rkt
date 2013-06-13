@@ -1,9 +1,6 @@
-;; copyright by Paul Graunke June 2000 AD
-;; warning - this was copied from the XML collection.
-;; It needs to be abstracted back in.
 #lang plai/gc2/mutator
 
-(allocator-setup "../../../hybrid.rkt" 400)
+(allocator-setup "../../collector.rkt" 10240)
 (require "xml-structures.rkt"
          "util.rkt")
 
@@ -302,8 +299,9 @@
 (define (skip-space/helper in)
   (let ([c (peek-char in)])
     (when (and (not (eof-object? c)) (char-whitespace? c))
-      (read-char in)
-      (skip-space/helper in))))
+      (begin
+        (read-char in)
+        (skip-space/helper in)))))
 (define (skip-space in)
   (skip-space/helper in))
 
@@ -439,13 +437,13 @@
      (fall-back/loop (vector-ref prefix (sub1 kv)) stop prefix c)]
     [else kv]))
 (define (fall-back k c stop prefix)
-  (let ([k (fall-back/loop k stop prefix)])
+  (let ([k (fall-back/loop k stop prefix c)])
     (if (eq? (string-ref stop k) c)
         (add1 k)
         k)))
 (define (init/helper k q stop prefix len)
   (when (< q len)
-    (let ([k (fall-back k (string-ref stop q))])
+    (let ([k (fall-back k (string-ref stop q) stop prefix)])
       (vector-set! prefix q k)
       (init/helper k (add1 q) stop prefix len))))
 (define (loop/helper matched in stop prefix len)

@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../../hybrid.rkt" 400)
+(allocator-setup "../../collector.rkt" 512)
 (require "util.rkt")
 
 (define hash (make-hash))
@@ -13,6 +13,8 @@
 (foldr cons '() '(1 2 3 4))
 (map (lambda (x) (+ 1 x)) '(1 2 3 4))
 (memq 2 '(1 2 3 4))
+(memf (λ (x) (> x 9)) '(7 8 9 10 11))
+(filter (λ (x) (> x 0)) '(1 -2 3 4 -5))
 (equal? (make-vector 1 0) (make-vector 1 0))
 (equal? 1 "1")
 
@@ -34,4 +36,28 @@
 (regexp-match-positions #rx"x." "12x4x6")
 
 (sort '(1 3 4 2) (lambda (a b) (< a b)))
-(sort '("1" "2") (lambda (a b) (string<? a b)))
+(sort '("3" "2") (lambda (a b) (string<? a b)))
+
+(define local-even? 'undefined)
+(define local-odd? 'undefined)
+(define is-odd?
+  (begin
+    (set! local-even? (λ (n)
+                        (or (= n 0)
+                            (local-odd? (sub1 n)))))
+    (set! local-odd? (λ (n)
+                       (and (not (= n 0))
+                            (local-even? (sub1 n)))))
+    local-odd?))
+  
+(is-odd? 11)
+
+(define a 1)
+(define b 3)
+(define (f x y)
+  (when (< x y)
+    (begin
+      (printf "yes\n")
+      (f (+ x 1) y))))
+
+(f a b)

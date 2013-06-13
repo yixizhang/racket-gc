@@ -1,7 +1,6 @@
 #lang plai/gc2/mutator
-;; copyright by Paul Graunke June 2000 AD
 
-(allocator-setup "../../../hybrid.rkt" 400)
+(allocator-setup "../../collector.rkt" 10240)
 
 (require "html-structs.rkt"
          "html-spec.rkt"
@@ -521,7 +520,7 @@
          contents))
 
 ;; read-xhtml : [Input-port] -> Html
-(define read-xhtml (compose xml->html read-xml))
+;;(define read-xhtml (compose xml->html read-xml))
 
 ;; peel-f : (Html-content -> Bool) (listof Html-content) (listof Html-content) -> (listof Html-content)
 (define (peel-f toss? to-toss acc0)
@@ -538,11 +537,11 @@
     (let ([peeled (peel-f html? contents empty)])
       (let ([body (memf body? peeled)])
         (make-html (if html
-                     (html-element-attributes (car html))
+                     (html-element-attributes (first html))
                      empty)
                    (append (filter head? peeled)
                            (cons (make-body (if body
-                                              (html-element-attributes (car body))
+                                              (html-element-attributes (first body))
                                               empty)
                                             (filter (compose not head?) (peel-f body? peeled empty))) empty)))))))
 
@@ -553,44 +552,53 @@
 ;; c) discarded
 ;; unknown tags may contain pcdata
 ;; the top level may contain pcdata
+
+;; rewrite
+;; (letrec ([f e1]) e2) -->
+;; (define f 1) (begin (set! f e1) e2)
+
+(define local-clean-up-pcdata 'undefined)
+(define local-eliminate-pcdata 'undefined)
+
 (define clean-up-pcdata
   ;; clean-up-pcdata : (listof Content) -> (listof Content)
-  (letrec ([clean-up-pcdata
-            (lambda (content)
-              (map (lambda (to-fix)
-                     (cond
-                       [(element? to-fix)
-                        (recontent-xml to-fix
-                                       (let ([possible (may-contain (element-name to-fix))]
-                                             [content (element-content to-fix)])
-                                         (if (or (not possible) (memq 'pcdata possible))
-                                             (clean-up-pcdata content)
-                                             (eliminate-pcdata content))))]
-                       [else to-fix]))
-                   content))]
-           [eliminate-pcdata
-            ;: (listof Content) -> (listof Content)
-            (lambda (content)
-              (let ([non-elements (first-non-elements content)]
-                    [more (memf element? content)])
-                (if more
-                  (let ([el (car more)])
-                    (let ([possible (may-contain (element-name el))])
-                      (if (or (not possible) (memq 'pcdata possible))
-                        (cons (recontent-xml el (append non-elements (clean-up-pcdata (element-content el)) (eliminate-pcdata (first-non-elements (cdr more)))))
-                              (or (memf element? (cdr more)) empty))
-                        (cons (recontent-xml el (eliminate-pcdata (element-content el)))
-                              (eliminate-pcdata (cdr more))))))
-                  empty)))])
-           clean-up-pcdata))
+  (begin
+    (set! local-clean-up-pcdata
+      (lambda (content)
+        (map (lambda (to-fix)
+               (cond
+                 [(element? to-fix)
+                  (recontent-xml to-fix
+                                 (let ([possible (may-contain (element-name to-fix))]
+                                       [content (element-content to-fix)])
+                                   (if (or (not possible) (memq 'pcdata possible))
+                                     (local-clean-up-pcdata content)
+                                     (local-eliminate-pcdata content))))]
+                 [else to-fix]))
+             content)))
+    (set! local-eliminate-pcdata
+      ;: (listof Content) -> (listof Content)
+      (lambda (content)
+        (let ([non-elements (first-non-elements content)]
+              [more (memf element? content)])
+          (if more
+            (let ([el (first more)])
+              (let ([possible (may-contain (element-name el))])
+                (if (or (not possible) (memq 'pcdata possible))
+                  (cons (recontent-xml el (append non-elements (local-clean-up-pcdata (element-content el)) (local-eliminate-pcdata (first-non-elements (rest more)))))
+                        (or (memf element? (rest more)) empty))
+                  (cons (recontent-xml el (local-eliminate-pcdata (element-content el)))
+                        (local-eliminate-pcdata (rest more))))))
+            empty))))
+    local-clean-up-pcdata))
 
 ;; first-non-elements : (listof Content) -> (listof Content)
 (define (first-non-elements content)
   (cond
     [(empty? content) empty]
-    [else (if (element? (car content))
+    [else (if (element? (first content))
               empty
-              (cons (car content) (first-non-elements (cdr content))))]))
+              (cons (first content) (first-non-elements (rest content))))]))
 
 ;; recontent-xml : Element (listof Content) -> Element
 (define (recontent-xml e c)
@@ -608,7 +616,7 @@
 (define may-contain-anything
   (gen-may-contain empty))
 
-(define use-html-spec (make-parameter #t))
+(define use-html-spec #t)
 
 ;; read-html-as-xml : [Input-port] -> (listof Content)
 (define (read-html-as-xml port)

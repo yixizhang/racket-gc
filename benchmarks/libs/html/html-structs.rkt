@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../../hybrid.rkt" 400)
+(allocator-setup "../../collector.rkt" 10240)
 
 (require racket/contract
          "xml-structures.rkt")

@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../../hybrid.rkt" 400)
+(allocator-setup "../../collector.rkt" 10240)
 (provide (all-defined-out))
 
 (define (null? thing) (empty? thing))
@@ -51,6 +51,19 @@
      (if (eq? (first lst) value)
          lst
          (memq value (rest lst)))]))
+(define (memf proc lst)
+  (cond
+    [(null? lst) #f]
+    [else (if (proc (first lst))
+              lst
+              (memf proc (rest lst)))]))
+(define (filter proc lst)
+  (cond
+    [(null? lst) empty]
+    [else (let ([e (first lst)])
+            (if (proc e)
+                (cons e (filter proc (rest lst)))
+                (filter proc (rest lst))))]))
 (define (append some-list more-list)
   (cond
     [(null? some-list) more-list]
