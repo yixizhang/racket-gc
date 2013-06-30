@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "coll.rkt" 100)
+(allocator-setup "collector.rkt" 512)
 (define (trigger-gc n)
   (if (zero? n) 0 (begin (cons n n) (trigger-gc (- n 1)))))
 (define (loop i)

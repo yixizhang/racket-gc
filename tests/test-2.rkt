@@ -1,6 +1,6 @@
 #lang plai/gc2/mutator
 
-(allocator-setup "../../hybrid.rkt" 200)
+(allocator-setup "collector.rkt" 512)
 
 (define (f c)
   (cond
@@ -15,17 +15,6 @@
 
 '(1 2 3)
 
-#|
-(define (ff number)
-  (let ([loop 47])
-    (begin
-      (set! loop (lambda (x)
-                   (cond
-                     [(= x 0) 'pass]
-                     [else (loop (sub1 x))])))
-      (loop number))))
-(ff 10)
-|#
 (define (loop x)
   (cond
     [(= x 0) 'pass]

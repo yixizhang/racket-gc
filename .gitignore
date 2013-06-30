@@ -22,9 +22,11 @@ paper/*
 *.dep
 *.zo
 
-# benchmark related
+# benchmark & test related
 /benchmarks/collectors
 /benchmarks/collector.rkt
 /benchmarks/cache.rkt
 /benchmarks/basic/*.rktd
 /benchmarks/basic/*.txt
+/tests/collector.rkt
+/tests/cache.rkt

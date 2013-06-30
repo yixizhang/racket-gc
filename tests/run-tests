@@ -1,0 +1,6 @@
+#! /bin/sh
+
+for test in `ls test-*.rkt`;
+do
+    racket $test > /dev/null
+done
