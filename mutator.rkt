@@ -50,7 +50,6 @@
           (mutator-current-input-port current-input-port)
           (mutator-open-input-file open-input-file)
           (mutator-define-struct define-struct)
-          (mutator-for-each for-each)
           (mutator-read-char read-char)
           (mutator-peek-char peek-char)
           (mutator-eof-object? eof-object?)
@@ -619,7 +618,7 @@
     (exact-nonnegative-integer? (collector:deref i))))
 (define (mutator-equal-hash-code thing)
   (collector:alloc-flat
-   (equal-hash-code (collector:deref thing))))
+   (equal-hash-code (gc->scheme thing))))
 (define (mutator-procedure? thing)
   (collector:alloc-flat (procedure? (deref-proc thing))))
 (define (mutator-procedure-arity-includes? proc num)
@@ -741,13 +740,15 @@
                          (collector:deref number)
                          a-loc)
   (void))
-
-(define (mutator-for-each f l)
-  (mutator-if (empty? (collector:deref l))
-              (void)
-              (mutator-begin (f (collector:first l))
-                             (mutator-for-each f (collector:rest l)))))
-
+#|
+(define (mutator-for-each proc/loc lst/loc)
+  (unless (or (collector:cons? lst/loc)
+              (empty? (collector:deref lst/loc)))
+    (error 'mutator-for-each "2nd arg should be cons"))
+  (let ([proc (deref-proc proc/loc)]
+        [lst (gc->list/loc lst/loc)])
+    (for-each proc lst)))
+|#
 (provide (rename-out (mutator-set-first! set-first!)))
 (define (mutator-set-first! x y)
   (collector:set-first! x y)

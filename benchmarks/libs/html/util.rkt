@@ -117,3 +117,8 @@
     [(null? lst) empty]
     [else (cons (proc (first lst)) 
                 (map proc (rest lst)))]))
+;; for-each : proc lst -> void
+(define (for-each f l)
+  (cond
+    [(null? l) (void)]
+    [else (begin (f (first l)) (for-each f (rest l)))]))
