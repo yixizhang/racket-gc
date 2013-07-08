@@ -1,6 +1,10 @@
 #! /bin/sh
 
-for test in `ls test-*.rkt`;
+for coll in generational hybrid;
 do
-    racket $test > /dev/null
+    cp ../collectors/$coll.rkt collector.rkt
+    for test in `ls test-*.rkt`;
+    do
+        racket $test > /dev/null
+    done
 done

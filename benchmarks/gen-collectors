@@ -1,0 +1,10 @@
+#!/bin/sh
+
+for ratio in {3..10};
+do
+	for coll in generational hybrid;
+	do
+		(( n = $ratio + 1 ))
+		sed "s/1\/4/1\/$n/g" ../collectors/$coll.rkt > collectors/$coll-$ratio.rkt
+    done
+done
