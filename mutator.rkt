@@ -619,16 +619,25 @@
 (define (mutator-equal-hash-code thing)
   (collector:alloc-flat
    (equal-hash-code (gc->scheme thing))))
-(define (mutator-procedure? thing)
-  (collector:alloc-flat (procedure? (deref-proc thing))))
+(define (mutator-procedure? proc/loc)
+  (define r (make-env-root proc/loc))
+  (add-active-root! r)
+  
+  (collector:alloc-flat (procedure? (deref-proc (get-root-loc r)))))
 (define (mutator-procedure-arity-includes? proc num)
-  (collector:alloc-flat (procedure-arity-includes? (deref-proc proc)
+  (define r (make-env-root proc))
+  (add-active-root! r)
+  
+  (collector:alloc-flat (procedure-arity-includes? (deref-proc (get-root-loc r))
                                                    (collector:deref num))))
 (define (mutator-file-position port)
   (collector:alloc-flat (file-position (collector:deref port))))
 (define (mutator-call-with-input-file path/loc proc/loc)
+  (define r (make-env-root proc/loc))
+  (add-active-root! r)
+  
   (call-with-input-file (collector:deref path/loc)
-                        (deref-proc proc/loc)))
+                        (deref-proc (get-root-loc r))))
 (define (mutator-current-command-line-arguments)
   (define args (current-command-line-arguments))
   (define v (collector:vector (vector-length args) (collector:alloc-flat #f)))
@@ -700,32 +709,23 @@
 (define (mutator-char-numeric? thing)
   (collector:alloc-flat (char-numeric? (collector:deref thing))))
 
-;; gc->list/loc : loc -> (listof loc)
-(define (gc->list/loc loc)
-  (cond
-    [(and (collector:flat? loc)
-          (null? (collector:deref loc)))
-     '()]
-    [else (cons (collector:first loc)
-                (gc->list/loc (collector:rest loc)))]))
-#|
-;; list/loc->gc : (listof loc) -> loc
-(define (list/loc->gc lst)
-  (cond
-    [(null? (cdr lst)) 
-     (collector:cons (car lst) 
-                     (let ([loc (collector:alloc-flat empty)])
-                       (read-root (make-env-root loc))))]
-    [else 
-      (collector:cons (car lst) 
-                      (list/loc->gc (cdr lst)))]))
-|#
 ;; mutator-sort : loc loc -> loc
 (define (mutator-sort lst/loc less-than?/loc)
-  (scheme->gc (map collector:deref
-                   (sort (gc->list/loc lst/loc)
-                         (lambda (a b)
-                           (collector:deref ((deref-proc less-than?/loc) a b)))))))
+  (define r (make-env-root less-than?/loc))
+  (add-active-root! r)
+  
+  (local [(define helper
+            (lambda (loc)
+              (cond
+                [(and (collector:flat? loc)
+                      (null? (collector:deref loc)))
+                 '()]
+                [else (cons (collector:first loc)
+                            (helper (collector:rest loc)))])))]
+    (scheme->gc (map collector:deref
+                     (sort (helper lst/loc)
+                           (lambda (a b)
+                             (collector:deref ((deref-proc (get-root-loc r)) a b))))))))
 
 (define (mutator-make-vector length loc)
   (collector:vector (collector:deref length) 
@@ -740,15 +740,6 @@
                          (collector:deref number)
                          a-loc)
   (void))
-#|
-(define (mutator-for-each proc/loc lst/loc)
-  (unless (or (collector:cons? lst/loc)
-              (empty? (collector:deref lst/loc)))
-    (error 'mutator-for-each "2nd arg should be cons"))
-  (let ([proc (deref-proc proc/loc)]
-        [lst (gc->list/loc lst/loc)])
-    (for-each proc lst)))
-|#
 (provide (rename-out (mutator-set-first! set-first!)))
 (define (mutator-set-first! x y)
   (collector:set-first! x y)
@@ -832,27 +823,25 @@
 
 ;; scheme->gc : any -> location?
 (define (scheme->gc thing)
-  (let ([loc (read-root (->gc/helper thing))])
-    (clear-active-roots!)
-    loc))
-
-;; ->gc/helper : (or/c flat? pair?) -> root?
-(define (->gc/helper thing)
-  (cond
-    [(heap-value? thing) 
-     (let* ([flat/loc (collector:alloc-flat thing)]
-            [flat/root (make-env-root flat/loc)])
-       (begin
-         (add-active-root! flat/root)
-         flat/root))]
-    [(pair? thing) 
-     (let* ([pair/loc 
-             (collector:cons (->gc/helper (car thing))
-                             (->gc/helper (cdr thing)))]
-            [pair/root (make-env-root pair/loc)])
-       (begin
-         (add-active-root! pair/root)
-         pair/root))]))
+  (let ([r (let loop ([thing thing])
+             (cond
+               [(heap-value? thing) 
+                (let* ([flat/loc (collector:alloc-flat thing)]
+                       [flat/root (make-env-root flat/loc)])
+                  (begin
+                    (add-active-root! flat/root)
+                    flat/root))]
+               [(pair? thing) 
+                (let* ([pair/loc 
+                        (collector:cons (loop (car thing))
+                                        (loop (cdr thing)))]
+                       [pair/root (make-env-root pair/loc)])
+                  (begin
+                    (add-active-root! pair/root)
+                    pair/root))]))])
+    (let ([loc (read-root r)])
+      (clear-active-roots!)
+      loc)))
 
 (define (gc->scheme loc)
   (define-struct an-unset ())

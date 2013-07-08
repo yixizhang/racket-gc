@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 512)
+(allocator-setup "collector.rkt" 512)
 (require "util.rkt")
 
 (define hash (make-hash))

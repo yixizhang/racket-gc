@@ -158,9 +158,15 @@
 (define (get-active-roots)
   (filter is-mutable-root? active-roots))
 
+(provide/contract (get-root-loc (root? . -> . location?)))
+(define (get-root-loc root)
+  (let ([loc (read-root root)])
+    (clear-active-roots!)
+    loc))
+
 (provide/contract (clear-active-roots! (-> void?)))
 (define (clear-active-roots!)
-  (set! clear-active-roots! empty))
+  (set! active-roots empty))
 
 (provide get-root-set)
 (define-syntax (get-root-set stx)
