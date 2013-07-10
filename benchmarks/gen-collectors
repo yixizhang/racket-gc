@@ -2,9 +2,9 @@
 
 for ratio in {3..10};
 do
-	for coll in generational hybrid;
+	for coll in batch incremental;
 	do
 		(( n = $ratio + 1 ))
-		sed "s/1\/4/1\/$n/g" ../collectors/$coll.rkt > collectors/$coll-$ratio.rkt
+		sed "s/1\/4/1\/$n/g" ../collectors/$coll-profile.rkt > collectors/$coll-$ratio.rkt
     done
 done

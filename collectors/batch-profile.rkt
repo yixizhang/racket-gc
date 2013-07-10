@@ -14,6 +14,7 @@
 (define all-heap-size empty)
 (define peak-heap-operations 0)
 (define current-heap-operations 0)
+(define all-heap-operations empty)
 (define heap-operation-check-time 0)
 (define total-heap-operations 0)
 
@@ -36,10 +37,13 @@
 ;; average
 ~s
 ;; total
+~s
+;; all records
 ~s\n"
            peak-heap-operations
            (round (/ total-heap-operations heap-operation-check-time))
-           total-heap-operations)
+           total-heap-operations
+           (reverse all-heap-operations))
   out)
 
 ;; init-allocator : -> void
@@ -434,13 +438,24 @@
   ;; use small generation as base
   (set! volume (- (heap-ref/bm alloc-word) 2))
 
+  ;; adding records of heap operations of copying part
+  (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+
   (define start (1st-gen-size))
   (mark-white! start)
+  ;; adding records of heap operations of marking white part
+  (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+
   (traverse/roots (get-root-set))
   (traverse/roots some-roots)
   (traverse/roots more-roots)
   (make-pointers-to-2nd-gen-roots 2)
-  (free-white! start #f #f #f))
+  ;; adding records of heap operations of marking black part
+  (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+
+  (free-white! start #f #f #f)
+  ;; adding records of heap operations of free-white part
+  (set! all-heap-operations (cons current-heap-operations all-heap-operations)))
 
 (define (make-pointers-to-2nd-gen-roots start)
   (cond
@@ -633,6 +648,10 @@
   (forward/roots some-roots)
   (forward/roots more-roots)
   (forward/pointers (+ 1 table-start))
+
+  ;; add records of heap operations of copying part
+  (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+  (set! all-heap-operations (list* 0 0 all-heap-operations))
 
   (heap-set!/bm status-word 'out)
   ;; metrics recording and print-out

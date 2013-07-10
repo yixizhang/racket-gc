@@ -10,7 +10,7 @@ cp ../caches/caches-1.rkt cache.rkt 2> /dev/null
 # generate data
 for ratio in {3..10};
 do
-    for coll in generational hybrid;
+    for coll in batch incremental;
     do
         cp collectors/$coll-$ratio.rkt collector.rkt 2> /dev/null
         for test in `ls basic/*.rkt`;
