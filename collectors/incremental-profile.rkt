@@ -24,6 +24,7 @@
 (define heap-size-out-marking empty)
 (define peak-heap-operations 0)
 (define current-heap-operations 0)
+(define all-heap-operations empty)
 (define heap-operation-check-time 0)
 (define total-heap-operations 0)
 
@@ -49,10 +50,13 @@
 ;; average
 ~s
 ;; total
+~s
+;; all records
 ~s\n"
            peak-heap-operations
            (round (/ total-heap-operations heap-operation-check-time))
-           total-heap-operations)
+           total-heap-operations
+           (reverse all-heap-operations))
   out)
 
 (define (init-allocator)
@@ -410,6 +414,9 @@
 (define (collect-garbage some-roots more-roots)
 
   ;; preparation for heap operations benchmarks
+  (when (> COUNT 0)
+    (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+    (set! COUNT 0))
   (heap-set!/bm status-word 'in)
   (set! current-heap-operations 0)
 
@@ -422,16 +429,21 @@
   (traverse/roots some-roots)
   (traverse/roots more-roots)
   (forward/pointers (+ 1 table-start-word))
+
+  ;; record tracing operation cycles
+  (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+
   ;; only free/mark-white! when tree traversal is done
   (when (equal? #f (heap-ref/bm tracing-head-word))
     ;; use spaces in small generation as base
     (set! volume (- (heap-ref/bm alloc-word) 1))
     (free/mark-white! 2nd-gen-alloc-start #f #f #f)
 
+    ;; record free/mark-white operation cycles
+    (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+
     ;; after free/mark-white!, leave marking phase
     (set! gc-phase 'not))
-  ;; ensure heap operations are only recorded during collection phase
-  (heap-set!/bm status-word 'out)
 
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
@@ -440,7 +452,12 @@
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))
-  (set! total-heap-operations (+ current-heap-operations total-heap-operations)))
+  (set! total-heap-operations (+ current-heap-operations total-heap-operations))
+
+  ;; reset current-heap-operations for out collection profiling
+  (heap-set!/bm status-word 'out)
+  (set! current-heap-operations 0))
+
 
 (define (traverse/roots thing)
   (cond
@@ -611,18 +628,29 @@
   (and (>= loc 2nd-gen-alloc-start)
        (< loc 2nd-gen-size)))
 
+;; record heap-operation cycles in & out of collections
+;; INTERVAL is the parameter controls how often to record cycles out of collections
+(define COUNT 0)
+(define INTERVAL 100)
+
 (define (heap-ref/bm loc)
   (define-values (val cycles) (read/mem loc))
   (let-values ([(s _) (read/mem status-word)])
-              (when (equal? 'in s)
-                (set! current-heap-operations (+ cycles current-heap-operations))))
+    (set! current-heap-operations (+ cycles current-heap-operations))
+    (set! COUNT (add1 COUNT))
+    (when (= COUNT INTERVAL)
+      (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+      (set! COUNT 0)))
   val)
 
 (define (heap-set!/bm loc thing)
   (define cycles (write/mem loc thing))
   (let-values ([(s _) (read/mem status-word)])
-              (when (equal? 'in s)
-                (set! current-heap-operations (+ cycles current-heap-operations)))))
+    (set! current-heap-operations (+ cycles current-heap-operations))
+    (set! COUNT (add1 COUNT))
+    (when (= COUNT INTERVAL)
+      (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+      (set! COUNT 0))))
 
 ;; find-free-space : find free space by traversing free space list
 ;; layout := free-2 next
@@ -1093,60 +1121,3 @@
 
 (define (step/finished?)
   (<= (heap-ref/bm step-count-word) 0))
-
-#|
-(print-only-errors #t)
-
-;; test init
-(define (test-init heap-size)
-  (set! 1st-gen-size (round (* heap-size 1/4)))
-  (set! 2nd-gen-size heap-size)
-  (define table-size (round (* heap-size 1/8)))
-  (set! 2nd-gen-start (+ 1st-gen-size table-size))
-  (set! 2nd-gen-alloc-start (+ 4 2nd-gen-start))
-  (set! status-word 2nd-gen-start)
-  (set! free-list-head (+ 1 2nd-gen-start))
-  (set! step-count-word (+ 2 2nd-gen-start))
-  (set! tracing-head-word (+ 3 2nd-gen-start))
-  (set! table-start-word 1st-gen-size)
-  (heap-set!/bm status-word 'out)
-  (heap-set!/bm step-count-word 0)
-  (heap-set!/bm tracing-head-word #f)
-  (heap-set!/bm table-start-word (+ table-start-word 1)))
-
-;; test for forward/pointers
-(let ([test-heap (vector 3 'flat 2 'free
-                         'free 'free 'free 'free
-                         11 18 1 'free
-                         'out 19 0 #f
-                         'vector 1 1 'free-n
-                         #f 13 'free 'free
-                         'free 'free 'free 'free
-                         'free 'free 'free 'free)])
-  (test (with-heap test-heap
-                   (test-init 32)
-                   (forward/pointers 9)
-                   test-heap)
-        (vector 3 'frwd 19 'free
-                'free 'free 'free 'free
-                9 'free 'free 'free
-                'out 21 2 #f
-                'vector 1 19 'flat
-                2 'free-n #f 11
-                'free 'free 'free 'free
-                'free 'free 'free 'free)))
-
-;; test for heap-stack-join crash
-(let ([test-heap (vector 3 'flat 2 'free
-                         'free 'free 'free 'free
-                         9 'free 'free 'free
-                         'in 26 0 #f
-                         'vector 2 20 22
-                         'flat 2 'flat 2 
-                         'flat 2 'free-n #f 
-                         6 'free 16 24)])
-  (test/exn (with-heap test-heap
-                       (test-init 32)
-                       (copy/alloc 5 #f #f))
-        "collection crashed because old heap hit tracing stack @ 26"))
-|#

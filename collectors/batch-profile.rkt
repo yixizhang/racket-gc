@@ -641,6 +641,9 @@
 ;; collect-garbage : roots roots -> void
 (define (collect-garbage some-roots more-roots)
   ;; preparation for heap operations benchmarks
+  (when (> COUNT 0)
+    (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+    (set! COUNT 0))
   (heap-set!/bm status-word 'in)
   (set! current-heap-operations 0)
 
@@ -651,9 +654,7 @@
 
   ;; add records of heap operations of copying part
   (set! all-heap-operations (cons current-heap-operations all-heap-operations))
-  (set! all-heap-operations (list* 0 0 all-heap-operations))
 
-  (heap-set!/bm status-word 'out)
   ;; metrics recording and print-out
   (set! heap-size-check-time (add1 heap-size-check-time))
   ;; because small generation is going to be swiped
@@ -661,7 +662,11 @@
   (set! heap-operation-check-time (add1 heap-operation-check-time))
   (when (> current-heap-operations peak-heap-operations)
     (set! peak-heap-operations current-heap-operations))
-  (set! total-heap-operations (+ current-heap-operations total-heap-operations)))
+  (set! total-heap-operations (+ current-heap-operations total-heap-operations))
+
+  ;; reset current-heap-operations for out collection profiling
+  (heap-set!/bm status-word 'out)
+  (set! current-heap-operations 0))
 
 ;; forward/roots : loc/(listof loc) -> loc
 ;; move every thing reachable from 'roots'
@@ -827,15 +832,26 @@
   (and (>= loc (1st-gen-size))
        (< loc (2nd-gen-size))))
 
+;; record heap-operation cycles in & out of collections
+;; INTERVAL is the parameter controls how often to record cycles out of collections
+(define COUNT 0)
+(define INTERVAL 100)
+
 (define (heap-ref/bm loc)
   (define-values (val cycles) (read/mem loc))
   (let-values ([(s _) (read/mem status-word)])
-              (when (equal? 'in s)
-                (set! current-heap-operations (+ cycles current-heap-operations))))
+    (set! current-heap-operations (+ cycles current-heap-operations))
+    (set! COUNT (add1 COUNT))
+    (when (= COUNT INTERVAL)
+      (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+      (set! COUNT 0)))
   val)
 
 (define (heap-set!/bm loc thing)
   (define cycles (write/mem loc thing))
   (let-values ([(s _) (read/mem status-word)])
-              (when (equal? 'in s)
-                (set! current-heap-operations (+ cycles current-heap-operations)))))
+    (set! current-heap-operations (+ cycles current-heap-operations))
+    (set! COUNT (add1 COUNT))
+    (when (= COUNT INTERVAL)
+      (set! all-heap-operations (cons current-heap-operations all-heap-operations))
+      (set! COUNT 0))))

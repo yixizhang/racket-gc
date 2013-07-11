@@ -11,10 +11,7 @@
                                                     "-"
                                                     ratio)
                                      "rktd"))
-(define plot-out-path (path-with-ext (string-append (path-name test)
-                                                    "-"
-                                                    coll-name)
-                                     "pdf"))
+
 (with-handlers ([exn:fail?
                  (lambda (exn)
                    (call-with-output-file data-out-path
