@@ -553,7 +553,7 @@
        (heap-set!/bm loc 'struct)
        (define parent (heap-ref/bm (+ loc 2)))
        (when parent (traverse/loc parent))]
-      [(white-struct-instace)
+      [(white-struct-instance)
        (heap-set!/bm loc 'struct-instance)
        (traverse/loc (heap-ref/bm (+ loc 1)))
        (for ([x (in-range (heap-ref/bm (+ 3 (heap-ref/bm (+ loc 1)))))])
