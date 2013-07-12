@@ -3,5 +3,5 @@
 (define (trigger-gc n)
   (if (zero? n) 0 (begin (cons n n) (trigger-gc (- n 1)))))
 (define (loop i)
-  (if (zero? i) 'passed (begin (trigger-gc 200) (loop (- i 1)))))
-(loop 200)
+  (if (zero? i) 'passed (begin (trigger-gc 20) (loop (- i 1)))))
+(loop 20)
