@@ -405,7 +405,7 @@
 
 (define (need-forwarding-pointers? thing)
   (cond
-    [(list? thing) (ormap 1st-gen? thing)]
+    [(list? thing) (ormap need-forwarding-pointers? thing)]
     [(root? thing) (1st-gen? (read-root thing))]
     [(number? thing) (1st-gen? thing)]
     [else thing]))
