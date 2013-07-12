@@ -1,11 +1,19 @@
 #! /bin/bash
 
-# remove existing data & graph
-rm basic/*.rktd 2> /dev/null
-rm basic/*.pdf 2> /dev/null
+# parse arg to get benchmark programs to run
+if [ "$1" == "" ]; then
+    # remove existing data & graph
+    rm basic/*.rktd 2> /dev/null
+    rm basic/*.pdf 2> /dev/null
+    tests=`ls basic/*.rkt`
+else
+    tests=`echo $1 | awk -F'.' '{print $1}'`
+    find . | egrep "$tests" | egrep "\.rktd|\.pdf" | xargs rm
+    tests="$tests.rkt"
+fi
 
 # copy cache model to pwd
-cp ../caches/caches-1.rkt cache.rkt 2> /dev/null
+# cp ../caches/caches-1.rkt cache.rkt 2> /dev/null
 
 # generate data
 for ratio in {3..10};
@@ -13,7 +21,7 @@ do
     for coll in batch incremental;
     do
         cp collectors/$coll-$ratio.rkt collector.rkt 2> /dev/null
-        for test in `ls basic/*.rkt`;
+        for test in $tests;
         do
             echo "$coll-$ratio -> $test"
             racket runner.rkt $coll $test $ratio
@@ -22,4 +30,8 @@ do
 done
 
 # generate graph
-racket plot-graphs.rkt
+if [ "$1" == "" ]; then
+    racket plot-graphs.rkt
+else
+    racket plot-graphs.rkt $tests
+fi

@@ -5,21 +5,23 @@
 
 ;; all .txt files under /basic/ directory
 (define all-results
-  (for/list ([p (directory-list "basic" #:build? #t)]
-             #:when (equal? "rktd" (path-ext (path->string p))))
-    (path->string p)))
+  (cond
+    [(= (vector-length (current-command-line-arguments)) 0)
+     (for/list ([p (directory-list "basic" #:build? #t)]
+                #:when (equal? "rktd" (path-ext (path->string p))))
+       (path->string p))]
+    [else
+     (define p (vector-ref (current-command-line-arguments) 0))
+     (define name (path-name p))
+     (for/list ([i (in-range 3 11)])
+       (format "~a-~a.rktd" name i))]))
 
 ;; read allocated-spaces records and plot out to .pdf files
 ;; plot data for two collectors on the same graph
 (for ([p (in-list all-results)])
-  (let ([heap-size-graph (path-with-ext (string-append (path-name p)
-                                                       "-"
-                                                       "mem")
-                                        "pdf")]
-        [heap-operations-graph (path-with-ext (string-append (path-name p)
-                                                             "-"
-                                                             "ops")
-                                              "pdf")])
+  (let* ([name (path-name p)]
+         [heap-size-graph (path-with-ext (format "~a-mem" name) "pdf")]
+         [heap-operations-graph (path-with-ext (format "~a-ops" name) "pdf")])
     (printf "plotting data of ~s\n" p)
     (call-with-input-file p
       (λ (port)
