@@ -1,94 +1,95 @@
 #lang racket
 (require plot)
-(require racket/pretty)
-(require "utils.rkt")
 
-;; all .txt files under /basic/ directory
-(define all-results
+;; read-data : string? -> (valuesof (or/c number? (listof number?)))
+(define (read-data file)
+  (unless (string? file)
+    (error 'read-data "expected file name in string fmt"))
   (cond
-    [(= (vector-length (current-command-line-arguments)) 0)
-     (for/list ([p (directory-list "basic" #:build? #t)]
-                #:when (equal? "rktd" (path-ext (path->string p))))
-       (path->string p))]
+    [(regexp-match "incremental" file)
+     (call-with-input-file file
+       (lambda (port)
+         (define largest-mem (read port))
+         (define mem-in (read port))
+         (define mem-out (read port))
+         (define largest-cycles (read port))
+         (define average-cycles (read port))
+         (define total-cycles (read port))
+         (define cycle-list (read port))
+         (values mem-in mem-out cycle-list)))]
     [else
-     (define p (vector-ref (current-command-line-arguments) 0))
-     (define name (path-name p))
-     (for/list ([i (in-range 3 11)])
-       (format "~a-~a.rktd" name i))]))
+     (call-with-input-file file
+       (lambda (port)
+         (define largest-mem (read port))
+         (define mem-list (read port))
+         (define largest-cycles (read port))
+         (define average-cycles (read port))
+         (define total-cycles (read port))
+         (define cycle-list (read port))
+         (values mem-list cycle-list)))]))
 
-;; read allocated-spaces records and plot out to .pdf files
-;; plot data for two collectors on the same graph
-(for ([p (in-list all-results)])
-  (let* ([name (path-name p)]
-         [heap-size-graph (path-with-ext (format "~a-mem" name) "pdf")]
-         [heap-operations-graph (path-with-ext (format "~a-ops" name) "pdf")])
-    (printf "plotting data of ~s\n" p)
-    (call-with-input-file p
-      (λ (port)
-        (read port)
-        (define g (read port))
-        (read port)
-        (read port)
-        (read port)
-        (define g-o (read port))
-        (read port)
-        (define h-in (read port))
-        (define h-out (read port))
-        (read port)
-        (read port)
-        (read port)
-        (define h-o (read port))
-        
-        (with-handlers ([exn:fail?
-                         (λ (exn)
-                           (pretty-print exn))])
-          (plot-file
-           (list
-            (points
-             (for/list ([d (in-list g)]
-                        [x (in-naturals)])
-               (vector x d))
-             #:label "Batch GC"
-             #:color "red"
-             #:size 2
-             #:sym 'triangle)
-            (points
-             (for/list ([d (in-list h-in)]
-                        [x (in-naturals)])
-               (vector x d))
-             #:label "Incremental GC inside marking"
-             #:color "blue"
-             #:size 2
-             #:sym 'square)
-            (points
-             (for/list ([d (in-list h-out)]
-                        [x (in-naturals)])
-               (vector x d))
-             #:label "Incremental GC outside marking"
-             #:color "yellow"
-             #:size 2
-             #:sym 'square))
-           #:x-label "Object allocations"
-           #:y-label "Memory usage"
-           heap-size-graph)
-          (plot-file
-           (list
-            (points
-             (for/list ([d (in-list g-o)]
-                        [x (in-naturals)])
-               (vector x d))
-             #:label "Batch GC"
-             #:color "red"
-             #:size 2
-             #:sym 'triangle)
-            (points
-             (for/list ([d (in-list h-o)]
-                        [x (in-naturals)])
-               (vector x d))
-             #:label "Incremental GC"
-             #:color "blue"
-             #:size 2
-             #:sym 'square))
-           #:x-label "Heap operations"
-           #:y-label "# of running cycles"
-           heap-operations-graph))))))
+;; produce/points : string? -> (valuesof (listof points) points)
+;; produce points for a single file
+(define (produce/points file)
+  (unless (string? file)
+    (error 'read-data "expected file name in string fmt"))
+  (local [(define-syntax-rule (gen-points lst label color)
+            (points (for/list ([d (in-list lst)] 
+                               [x (in-naturals)])
+                      (vector x d))
+                    #:label label
+                    #:color color
+                    #:size 2))]
+    (cond
+      [(regexp-match "incremental" file)
+       (let-values ([(mem-in mem-out cycle-list) (read-data file)])
+         (list (list (gen-points mem-in "Incremental GC inside marking" "blue")
+                     (gen-points mem-out "Incremental GC outside marking" "yellow"))
+               (list (gen-points cycle-list "Incremental GC" "blue"))))]
+      [else
+       (let-values ([(mem-list cycle-list) (read-data file)])
+         (list (list (gen-points mem-list "Batch GC" "red"))
+               (list (gen-points cycle-list "Batch GC" "red"))))])))
+
+;; produce/graphs : (listof string?) string? -> void?
+;; output graph to corresponding file
+(define (produce/graphs fs name)
+  (for ([f (in-list fs)])
+    (unless (string? f)
+      (error 'read-data "expected file name in string fmt")))
+  (define lps (map produce/points fs))
+  (define memps (apply append (map first lps)))
+  (define opsps (apply append (map second lps)))
+  
+  (plot-file memps
+             (format "~a-mem.pdf" name)
+             #:x-label "allocations" #:y-label "mem")
+  (plot-file opsps
+             (format "~a-ops.pdf" name)
+             #:x-label "heap ops" #:y-label "cycles"))
+
+;; main : current-command-line-arguments -> void
+;; produce graph for single or multiple data files
+(with-handlers ([exn:fail?
+                 (lambda (e)
+                   (print e))])
+  (define argv (vector->list (current-command-line-arguments)))
+  (define argc (length argv))
+  (unless (not (= 0 argc))
+    (error 'main "expected files(s) to plot"))
+  
+  (cond
+    [(= argc 1) (let ([name (first (string-split (first argv) "."))])
+                  (produce/graphs argv name))]
+    [(= argc 2) (let* ([bases (map (lambda (x)
+                                     (first (string-split x ".")))
+                                   argv)]
+                       [ns (map (lambda (x)
+                                  (first (string-split x "-")))
+                                bases)]
+                       [ratio (second (string-split (first bases) "-"))])
+                  (produce/graphs argv (format "~a-~a-~a"
+                                               (first ns)
+                                               (last (string-split (second ns) "/"))
+                                               ratio)))]
+    [else (error 'main "expected one or two file(s)")]))
