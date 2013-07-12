@@ -817,8 +817,9 @@
 
 (define (forward/pointers loc)
   (cond
-    [(= loc (heap-size)) (void)]
-    [(equal? 'free (heap-ref/bm loc)) (void)]
+    [(or (= loc (heap-size))
+         (equal? 'free (heap-ref/bm loc)))
+     (heap-set!/bm table-start (add1 table-start))]
     [else
      (define new-addr (forward/loc (heap-ref/bm (+ loc 1))))
      (heap-set!/bm (+ loc 1) new-addr)

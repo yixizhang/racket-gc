@@ -613,8 +613,9 @@
 
 (define (forward/pointers loc)
   (cond
-    [(= loc 2nd-gen-start) (void)]
-    [(equal? 'free (heap-ref/bm loc)) (void)]
+    [(or (= loc 2nd-gen-start)
+         (equal? 'free (heap-ref/bm loc)))
+     (heap-set!/bm table-start-word (add1 table-start-word))]
     [else
      (define new-addr (forward/loc (heap-ref/bm (+ loc 1))))
      (heap-set!/bm (heap-ref/bm loc) new-addr)
