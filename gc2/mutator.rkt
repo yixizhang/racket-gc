@@ -385,7 +385,13 @@
                                                       (string->symbol (format "~a-~a"
                                                                               (syntax-e #'s)
                                                                               (syntax-e x)))))
-                                     local-fields)])
+                                     local-fields)]
+                     [(set-s-f! ...) (map (lambda (x)
+                                            (datum->syntax #'s
+                                                           (string->symbol (format "set-~a-~s!"
+                                                                                   (syntax-e #'s)
+                                                                                   (syntax-e x)))))
+                                          local-fields)])
          #`(begin
              (mutator-define struct:s 
                (collector:alloc-struct 's parent-struct #,fields-num))
@@ -396,7 +402,11 @@
              #,@(for/list ([i index-list]
                            [f (in-list (syntax->list #'(s-f ...)))])
                   #`(define (#,f a)
-                      (collector:struct-select struct:s a #,i))))))]))
+                      (collector:struct-select struct:s a #,i)))
+             #,@(for/list ([i index-list]
+                           [f (in-list (syntax->list #'(set-s-f! ...)))])
+                  #`(define (#,f a value)
+                      (collector:struct-set! struct:s a #,i value))))))]))
 (begin-for-syntax
   (define-struct define-struct-info (fields) #:prefab))
 (define-syntax (mutator-define-struct stx)
@@ -439,7 +449,7 @@
                                     gc:vector gc:vector? 
                                     gc:vector-length gc:vector-ref gc:vector-set!
                                     gc:alloc-struct gc:alloc-struct-instance
-                                    gc:struct-pred gc:struct-select)
+                                    gc:struct-pred gc:struct-select gc:struct-set!)
                     (map (λ (s) (datum->syntax stx s))
                          '(init-allocator gc:deref gc:alloc-flat gc:cons 
                                           gc:closure gc:closure? gc:closure-code-ptr gc:closure-env-ref
@@ -449,7 +459,7 @@
                                           gc:vector gc:vector? 
                                           gc:vector-length gc:vector-ref gc:vector-set!
                                           gc:alloc-struct gc:alloc-struct-instance 
-                                          gc:struct-pred gc:struct-select))]) 
+                                          gc:struct-pred gc:struct-select gc:struct-set!))]) 
        (begin
          #`(begin
              #,(if (alternate-collector)
@@ -478,6 +488,7 @@
              (set-collector:alloc-struct-instance! 'collector-module gc:alloc-struct-instance)
              (set-collector:struct-pred! 'collector-module gc:struct-pred)
              (set-collector:struct-select! 'collector-module gc:struct-select)
+             (set-collector:struct-set!! 'collector-module gc:struct-set!)
              
              (init-heap! (#%datum . heap-size) init-allocator)
              (when (gui-available?) 

@@ -348,6 +348,13 @@
            (heap-ref/bm (+ 1 s))))
   (heap-ref/bm (+ instance 2 index)))
 
+(define (gc:struct-set! s instance index value)
+  (unless (gc:struct-pred s instance)
+    (error 'gc:struct-select "value at ~a is not an instance of ~a" 
+           instance
+           (heap-ref/bm (+ 1 s))))
+  (heap-set!/bm (+ instance 2 index) value))
+
 (define (table/alloc pointer target)
   (define next (heap-ref/bm table-start-word))
   (cond

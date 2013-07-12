@@ -45,4 +45,5 @@
   alloc-struct
   alloc-struct-instance
   struct-pred
-  struct-select)
+  struct-select
+  struct-set!)

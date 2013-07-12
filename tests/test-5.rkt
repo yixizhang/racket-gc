@@ -5,7 +5,14 @@
 (define (f x)
   (cond
     [(= x 0) empty]
-    [else (cons (s-x (make-s x))
-                (f (- x 1)))]))
+    [else (let ([ss (make-s x)])
+            (cond
+              [(s? ss)
+               (begin
+                 (set-s-x! ss 0)
+                 (cons (s-x ss)
+                       (f (- x 1))))]
+              [else
+               (printf "ss: ~s is not a s" ss)]))]))
 
-(f 3)
+(f 20)
