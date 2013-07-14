@@ -42,13 +42,14 @@
           (collector:cons cons)
           (collector:first first)
           (collector:rest rest)
-
+          
           (mutator-equal? equal?)
           (mutator-quote quote)
           (mutator-top-interaction #%top-interaction)
           (mutator-module-begin #%module-begin)
           (mutator-current-input-port current-input-port)
           (mutator-open-input-file open-input-file)
+          (mutator-open-input-string open-input-string)
           (mutator-define-struct define-struct)
           (mutator-read-char read-char)
           (mutator-peek-char peek-char)
@@ -65,7 +66,7 @@
           (mutator-file-position file-position)
           (mutator-call-with-input-file call-with-input-file)
           (mutator-current-command-line-arguments current-command-line-arguments)
-
+          
           (mutator-string->number string->number)
           (mutator-string-append string-append)
           (mutator-format format)
@@ -79,12 +80,12 @@
           (mutator-string-downcase string-downcase)
           (mutator-string-length string-length)
           (mutator-string-ref string-ref)
-
+          
           (mutator-regexp-match regexp-match)
           (mutator-regexp-replace* regexp-replace*)
           (mutator-regexp-match-positions regexp-match-positions)
           (mutator-bytes->string/utf-8 bytes->string/utf-8)
-
+          
           (mutator-char? char?)
           (mutator-char-alphabetic? char-alphabetic?)
           (mutator-char-numeric? char-numeric?)
@@ -257,9 +258,9 @@
                      (#%app collector:closure closure (vector free-id ...)))
                    (syntax/loc stx
                      (with-continuation-mark 
-                      gc-roots-key 
-                      (list (make-env-root env-id) ...)
-                      (#%app collector:closure closure (vector free-id ...)))))))))]
+                         gc-roots-key 
+                       (list (make-env-root env-id) ...)
+                       (#%app collector:closure closure (vector free-id ...)))))))))]
     [(_ (id ...) body ...)
      (syntax/loc stx
        (mutator-lambda (id ...) (mutator-begin body ...)))]))
@@ -350,7 +351,7 @@
           [(result-addr)
            (show-one-result result-addr)]
           [result-addrs
-            (show-multiple-results result-addrs)])))]))
+           (show-multiple-results result-addrs)])))]))
 (define (show-one-result result-addr)
   (cond
     [(procedure? result-addr)
@@ -362,11 +363,11 @@
 (define (show-multiple-results results)
   (apply values
          (for/list ([result (in-list results)])
-                   (cond
-                     [(procedure? result)
-                      result]
-                     [(location? result)
-                      (gc->scheme result)]))))
+           (cond
+             [(procedure? result)
+              result]
+             [(location? result)
+              (gc->scheme result)]))))
 
 ;; define-struct : number symbol (listof symbol) -> mutator-define functions ...
 (define-syntax (define-struct/offset stx)
@@ -394,7 +395,7 @@
                                           local-fields)])
          #`(begin
              (mutator-define struct:s 
-               (collector:alloc-struct 's parent-struct #,fields-num))
+                             (collector:alloc-struct 's parent-struct #,fields-num))
              (define (make-s #,@fields)
                (collector:alloc-struct-instance struct:s (vector #,@fields)))
              (define (s? a)
@@ -570,7 +571,7 @@
                          stx)]
     [(id exp ...)
      #`(mutator-app #,p-id exp ...)]))
-    
+
 (define-syntax (provide-flat-prims/lift stx)
   (syntax-case stx ()
     [(_ prim-ids id ...)
@@ -595,22 +596,25 @@
             (gc->scheme l))))
 (define (mutator-equal? a b)
   (collector:alloc-flat
-    (or (= a b)
-        (and (or (and (collector:flat? a)
-                      (collector:flat? b))
-                 (and (collector:cons? a)
-                      (collector:cons? b))
-                 (and (collector:closure? a)
-                      (collector:closure? b))
-                 (and (collector:vector? a)
-                      (collector:vector? b)))
-             (equal? (gc->scheme a) (gc->scheme b))))))
+   (or (= a b)
+       (and (or (and (collector:flat? a)
+                     (collector:flat? b))
+                (and (collector:cons? a)
+                     (collector:cons? b))
+                (and (collector:closure? a)
+                     (collector:closure? b))
+                (and (collector:vector? a)
+                     (collector:vector? b)))
+            (equal? (gc->scheme a) (gc->scheme b))))))
 (define (mutator-current-input-port)
   (collector:alloc-flat
    (current-input-port)))
 (define (mutator-open-input-file path)
   (collector:alloc-flat
-    (open-input-file (collector:deref path))))
+   (open-input-file (collector:deref path))))
+(define (mutator-open-input-string s)
+  (collector:alloc-flat
+   (open-input-string (collector:deref s))))
 (define (mutator-read-char port)
   (collector:alloc-flat
    (read-char (collector:deref port))))
@@ -622,11 +626,11 @@
    (eof-object? (collector:deref thing))))
 (define (mutator-modulo x y)
   (collector:alloc-flat
-    (modulo (collector:deref x)
-            (collector:deref y))))
+   (modulo (collector:deref x)
+           (collector:deref y))))
 (define (mutator-exact-nonnegative-integer? i)
   (collector:alloc-flat 
-    (exact-nonnegative-integer? (collector:deref i))))
+   (exact-nonnegative-integer? (collector:deref i))))
 (define (mutator-equal-hash-code thing)
   (collector:alloc-flat
    (equal-hash-code (gc->scheme thing))))
@@ -648,15 +652,15 @@
   (add-active-root! r)
   
   (call-with-input-file (collector:deref path/loc)
-                        (deref-proc (get-root-loc r))))
+    (deref-proc (get-root-loc r))))
 (define (mutator-current-command-line-arguments)
   (define args (current-command-line-arguments))
   (define v (collector:vector (vector-length args) (collector:alloc-flat #f)))
   (for ([val (in-vector args)]
         [i (in-naturals)])
-       (collector:vector-set! v
-                              i
-                              (collector:alloc-flat val)))
+    (collector:vector-set! v
+                           i
+                           (collector:alloc-flat val)))
   v)
 
 ;; string related
@@ -669,9 +673,9 @@
   (syntax-case stx ()
     [(_ form v ...)
      #`(collector:alloc-flat
-         (format (gc->scheme form)
-                 #,@(for/list ([v-v (in-list (syntax->list #`(v ...)))])
-                              #`(gc->scheme #,v-v))))]))
+        (format (gc->scheme form)
+                #,@(for/list ([v-v (in-list (syntax->list #`(v ...)))])
+                     #`(gc->scheme #,v-v))))]))
 (define (mutator-read-string amt in)
   (collector:alloc-flat (read-string (collector:deref amt)
                                      (collector:deref in))))
@@ -688,7 +692,7 @@
 ;; mutator-list->string : loc -> string
 (define (mutator-list->string loc)
   (collector:alloc-flat
-    (list->string (gc->scheme loc))))
+   (list->string (gc->scheme loc))))
 (define (mutator-string-downcase s)
   (collector:alloc-flat (string-downcase (collector:deref s))))
 (define (mutator-string-length thing)
@@ -820,17 +824,17 @@
       [else 
        (error 'procedure-application "expected procedure, given something else")]))
   (cond
-   [(procedure? v)
-    v]
-   [(closure-code? v)
-    (lambda args
-      (apply (closure-code-proc v) 
-             (append 
-              (for/list ([i (in-range (closure-code-env-count v))])
-                        (collector:closure-env-ref proc/loc i))
-              args)))]
-   [else
-    (error 'procedure-application "expected procedure, given ~e" v)]))
+    [(procedure? v)
+     v]
+    [(closure-code? v)
+     (lambda args
+       (apply (closure-code-proc v) 
+              (append 
+               (for/list ([i (in-range (closure-code-env-count v))])
+                 (collector:closure-env-ref proc/loc i))
+               args)))]
+    [else
+     (error 'procedure-application "expected procedure, given ~e" v)]))
 
 ;; scheme->gc : any -> location?
 (define (scheme->gc thing)
@@ -879,11 +883,11 @@
               [(collector:vector? loc)
                (local [(define vlen (collector:vector-length loc))
                        (define v (make-vector vlen 0))]
-                      (for ([i (in-range vlen)])
-                           (local [(define p (make-placeholder unset))]
-                                  (placeholder-set! p (unwrap (collector:vector-ref loc i)))
-                                  (vector-set! v i p)))
-                      (placeholder-set! ph v))]
+                 (for ([i (in-range vlen)])
+                   (local [(define p (make-placeholder unset))]
+                     (placeholder-set! p (unwrap (collector:vector-ref loc i)))
+                     (vector-set! v i p)))
+                 (placeholder-set! ph v))]
               [else 
                (error (format "gc:flat?, gc:cons?, gc:closure?, gc:vector? all returned false for ~a" loc))])
             (placeholder-get ph)))))

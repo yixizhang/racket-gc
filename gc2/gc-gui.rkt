@@ -113,6 +113,10 @@
         [(closure-code? obj)
          (format "~a" (or (object-name (closure-code-proc obj)) "#<closure>"))]
         [(symbol? obj) (format "'~s" obj)]
+        [(or (input-port? obj)
+             (output-port? obj)
+             (port? obj))
+         (format "~s" obj)]
         [(null? obj) "empty"]
         [else (error 'val->string "unknown object ~s, expected a heap-value." obj)]))
     

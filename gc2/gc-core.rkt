@@ -53,7 +53,7 @@
 ;;; conceptually occupy a small, fixed amount of space.
 (provide/contract [heap-value? (any/c . -> . boolean?)])
 (define (heap-value? v)
-  (or (number? v) (symbol? v) (char? v) (string? v) (bytes? v) (eof-object? v) (regexp? v) (byte-regexp? v) (boolean? v) (void? v) (empty? v) (closure-code? v)))
+  (or (number? v) (symbol? v) (char? v) (string? v) (bytes? v) (eof-object? v) (regexp? v) (byte-regexp? v) (boolean? v) (void? v) (empty? v) (closure-code? v) (input-port? v) (output-port? v)))
 
 (provide location?)
 (define (location? v)

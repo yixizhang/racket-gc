@@ -14,9 +14,9 @@ Icon
 # jpg files as meeting records 
 *.jpg
 
-# papers
-paper/*
+# Non-code files
 *.pdf
+*.rktd
 
 # compiled
 *.dep
