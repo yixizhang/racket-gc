@@ -3,7 +3,7 @@
 # usage : ./rbench.rb [-a] [-c=collector-name[, ...]] [-b=bench-name[,...]]
 
 # default materials
-collectors = ['batch', 'incremental']
+collectors = ['batch', 'incremental', 'incremental2']
 benchs = `ls basic/*.rkt`.split(/\n/).map { |b| b.split('.')[0] }
 
 # argv parse

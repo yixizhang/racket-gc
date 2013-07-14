@@ -1,6 +1,13 @@
 #lang racket
 (require plot)
 
+;; color set
+(define colors '("blue" "red" "yellow" "green"))
+(define-syntax-rule (choose/color index)
+  (let ([c (list-ref colors index)])
+    (set! index (add1 index))
+    c))                         
+
 ;; read-data : string? -> (valuesof (or/c number? (listof number?)))
 (define (read-data file)
   (unless (string? file)
@@ -30,26 +37,40 @@
 
 ;; produce/points : string? -> (valuesof (listof points) points)
 ;; produce points for a single file
-(define (produce/points file)
-  (unless (string? file)
-    (error 'read-data "expected file name in string fmt"))
-  (local [(define-syntax-rule (gen-points lst label color)
-            (points (for/list ([d (in-list lst)] 
-                               [x (in-naturals)])
-                      (vector x d))
-                    #:label label
-                    #:color color
-                    #:size 2))]
-    (cond
-      [(regexp-match "incremental" file)
-       (let-values ([(mem-in mem-out cycle-list) (read-data file)])
-         (list (list (gen-points mem-in "Incremental GC inside marking" "blue")
-                     (gen-points mem-out "Incremental GC outside marking" "yellow"))
-               (list (gen-points cycle-list "Incremental GC" "blue"))))]
-      [else
-       (let-values ([(mem-list cycle-list) (read-data file)])
-         (list (list (gen-points mem-list "Batch GC" "red"))
-               (list (gen-points cycle-list "Batch GC" "red"))))])))
+(define (ppoints index1 index2)
+  (lambda (file)
+    (unless (string? file)
+      (error 'read-data "expected file name in string fmt"))
+    (local [(define (choose/color1) (choose/color index1))
+            (define (choose/color2) (choose/color index2))
+            (define (gen-points lst label color)
+              (points (for/list ([d (in-list lst)] 
+                                 [x (in-naturals)])
+                        (vector x d))
+                      #:label label
+                      #:color color
+                      #:size 2))]
+      (define name (string-titlecase
+                    (last 
+                     (string-split 
+                      (first (string-split file "-"))
+                      "/"))))
+      (cond
+        [(regexp-match "incremental" file)
+         (let-values ([(mem-in mem-out cycle-list) (read-data file)])
+           (list (map (lambda (lst side)
+                        (gen-points lst
+                                    (format "~a GC ~a marking" name side)
+                                    (choose/color1)))
+                      (list mem-in mem-out) '("inside" "outside"))
+                 (list (gen-points cycle-list
+                                   (format "~a GC" name)
+                                   (choose/color2)))))]
+        [else
+         (let-values ([(mem-list cycle-list) (read-data file)])
+           (list (list (gen-points mem-list "Batch GC" (choose/color1)))
+                 (list (gen-points cycle-list "Batch GC" (choose/color2)))))]))))
+(define produce/points (ppoints 0 0))
 
 ;; produce/graphs : (listof string?) string? -> void?
 ;; output graph to corresponding file

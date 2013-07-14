@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 if ARGV.empty?
-  collectors = ['../collectors/batch-profile.rkt', '../collectors/incremental-profile.rkt']
+  collectors = ['../collectors/batch-profile.rkt', '../collectors/incremental-profile.rkt', '../collectors/incremental2-profile.rkt']
 else
   collectors = ARGV
 end
