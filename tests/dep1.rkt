@@ -2,7 +2,7 @@
 
 (allocator-setup "collector.rkt" 512)
 
-(require "test-struct-0.rkt")
+(require "dep0.rkt")
 
 (define-struct (p t) (text))
 (define p-i (make-p 0 0 0 0))

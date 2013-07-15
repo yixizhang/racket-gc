@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../collector.rkt" 1024)
+(allocator-setup "../collector.rkt" 2048)
 ;; helper functions
 (define (null? thing) (empty? thing))
 (define (not pred) (if pred #f #t))
@@ -34,7 +34,7 @@
     [else (let ([kv (first lst)])
             (if (equal? (kv-key kv) key)
                 (kv-value kv)
-                (get-it (rest lst))))]))
+                (get-it (rest lst) key fail)))]))
 (define (hash-ref hash key fail)
   (let* ([i (equal-hash-code key)]
          [v (hash-table-vec hash)]
@@ -76,10 +76,14 @@
 ;; main
 (define stats (make-hash))
 (define (count ip)
-  (let* ([c (read-char ip)]
-         [n (hash-ref stats c (lambda ()
-                                (begin
-                                  (hash-set! stats c 0)
-                                  (hash-ref stats c (lambda () (void))))))])
-    (hash-set! stats c (+ 1 n))))
-(count (open-input-string "abcdaadebbbbbcabccbdceaab"))
+  (let ([c (read-char ip)])
+    (cond
+      [(eof-object? c ) (void)]
+      [else (let ([n (hash-ref stats c (lambda ()
+                                         (begin
+                                           (hash-set! stats c 0)
+                                           (hash-ref stats c (lambda () (void))))))])
+              (hash-set! stats c (+ 1 n))
+              (count ip))])))
+(define txt "To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler. All emotions, and that one particularly, were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning and observing machine that the world has seen, but as a lover he would have placed himself in a false position. He never spoke of the softer passions, save with a gibe and a sneer.")
+(count (open-input-string txt))

@@ -14,7 +14,7 @@
 (procedure? (lambda (x) x))
 (procedure-arity-includes? (lambda () 1) 0)
 
-(call-with-input-file "test-1.rkt"
+(call-with-input-file "cons1.rkt"
   (lambda (port) 'hello))
 
 '(1 2 3)

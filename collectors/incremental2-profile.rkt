@@ -1,5 +1,4 @@
 #lang plai/gc2/collector
-(require racket/stream)
 (require "cache.rkt")
 
 ;; config for collection
@@ -352,9 +351,11 @@
     (error 'gc:struct-select "value at ~a is not an instance of ~a" 
            instance
            (heap-ref/bm (+ 1 s))))
+  (when (and (2nd-gen? instance)
+             (1st-gen? value))
+    (table/alloc (+ instance 2 index) value))
   (heap-set!/bm (+ instance 2 index) value))
 
-;; table/alloc : location? location?/empty -> void
 (define (table/alloc pointer target)
   (define next (heap-ref/bm table-start-word))
   (cond
@@ -571,9 +572,11 @@
         new-addr]
        [(frwd) (heap-ref/bm (+ loc 1))]
        [else (error 'forward/loc "wrong tag ~s at ~a" (heap-ref/bm loc) loc)])]
-    [else loc]))
+    [else 
+     (trace/roots-iff-white loc)
+     loc]))
 
-;; forward/ref : loc -> loc
+;; forward/ref : loc -> void
 ;; move the referenced object to the other semi-space
 ;; and return the new addr of moved object
 (define (forward/ref loc)
@@ -720,12 +723,9 @@
 ;; check if any spot within free slots are taken
 ;; in order to detect heap-stack crash
 (define (check/free loc size)
-  (case (heap-ref/bm loc)
-    [(free-2) #t]
-    [(free-n) (stream-andmap (lambda (x)
-                               (equal? 'free (heap-ref/bm (+ loc x))))
-                             (in-range 3 size))]
-    [else (error 'check/free "wrong tag @ ~s" loc)]))
+  (define stack/head (heap-ref/bm tracing-head-word))
+  (or (not stack/head)
+      (<= (+ loc size) stack/head)))
 
 (define (copy/alloc n some-roots more-roots)
   (define next (find-free-space (heap-ref/bm free-list-head) #f n))
@@ -742,7 +742,10 @@
      ;; count allocations
      (heap-set!/bm step-count-word (+ n (heap-ref/bm step-count-word)))
      next]
-    [else (error 'copy/alloc "old generation gc failed")]))
+    [else (error 'copy/alloc 
+                 "incremental gc failed. expected ~s free spaces, but found ~s"
+                 n
+                 next)]))
 
 (define (trace/roots-iff-white thing)
   (cond
@@ -888,7 +891,10 @@
                                                     (for ([i (in-range fv-count)])
                                                       (push/cont (heap-ref/bm (+ loc 2 i))))
                                                     (continue/incre-mark)]
-            [else (error 'traverse/incre-mark "wrong tag @ ~s" loc)])]))
+            [else (error 'traverse/incre-mark 
+                         "wrong tag ~s @ ~s" 
+                         (heap-ref/bm loc)
+                         loc)])]))
 
 (define (mark-black loc)
   (case (heap-ref/bm loc)
@@ -1033,10 +1039,18 @@
     [(equal? loc #f) #f]
     [else
      (define ptr (heap-ref/bm loc))
+     (unless (location? ptr)
+       (error 'next/cont 
+              "wrong type ~s @ ~s"
+              ptr
+              loc))
      (clean/cont loc)
      ptr]))
 
 (define (push/cont ptr)
+  (unless (2nd-gen? ptr)
+    (error 'push/cont "pushing location ~s to tracing stack" ptr))
+  
   (mark-grey ptr)
   (case (heap-ref/bm ptr)
     [(pair flat proc vector strut struct-instance) (void)]

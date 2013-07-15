@@ -35,7 +35,7 @@
     [else (let ([kv (first lst)])
             (if (equal? (kv-key kv) key)
                 (kv-value kv)
-                (get-it (rest lst))))]))
+                (get-it (rest lst) key fail)))]))
 (define (hash-ref hash key fail)
   (let* ([i (equal-hash-code key)]
          [v (hash-table-vec hash)]

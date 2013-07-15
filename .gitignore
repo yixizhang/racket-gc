@@ -23,6 +23,7 @@ Icon
 *.zo
 
 # benchmark & test related
+/collectors/cache.rkt
 /benchmarks/collectors
 /benchmarks/collector.rkt
 /benchmarks/cache.rkt
