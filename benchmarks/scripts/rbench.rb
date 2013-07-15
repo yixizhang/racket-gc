@@ -4,7 +4,7 @@
 
 # default materials
 collectors = ['batch', 'incremental', 'incremental2']
-benchs = `ls basic/*.rkt`.split(/\n/).map { |b| b.split('.')[0] }
+benchs = `ls mutators/*.rkt`.split(/\n/).map { |b| b.split('.')[0] }
 
 # argv parse
 #
@@ -17,7 +17,7 @@ ARGV.each do |arg|
     collectors = arg.split('=')[1].split(',')
   when /^-b=/
     benchs = arg.split('=')[1].split(',')
-    benchs = benchs.map { |b| "basic/%s" % b }
+    benchs = benchs.map { |b| "mutators/%s" % b }
   else
     puts "Unknown Arguments #{arg}"
   end

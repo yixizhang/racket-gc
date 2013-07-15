@@ -1,7 +1,7 @@
 #lang racket
 (require plot)
 (require racket/runtime-path)
-(require "collector.rkt")
+(require "../collector.rkt")
 
 (let* ([coll-name (vector-ref (current-command-line-arguments) 0)]
        [bench-name (vector-ref (current-command-line-arguments) 1)]

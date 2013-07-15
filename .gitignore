@@ -11,12 +11,10 @@ Icon
 .Spotlight-V100
 .Trashes
 
-# jpg files as meeting records 
-*.jpg
-
 # Non-code files
 *.pdf
 *.rktd
+*.png
 
 # compiled
 *.dep

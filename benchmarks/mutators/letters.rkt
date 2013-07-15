@@ -79,10 +79,12 @@
   (let ([c (read-char ip)])
     (cond
       [(eof-object? c ) (void)]
-      [else (let ([n (hash-ref stats c (lambda ()
-                                         (begin
-                                           (hash-set! stats c 0)
-                                           (hash-ref stats c (lambda () (void))))))])
+      [else (let ([n (hash-ref stats 
+                               c 
+                               (lambda ()
+                                 (begin
+                                   (hash-set! stats c 0)
+                                   0)))])
               (hash-set! stats c (+ 1 n))
               (count ip))])))
 (define txt "To Sherlock Holmes she is always the woman. I have seldom heard him mention her under any other name. In his eyes she eclipses and predominates the whole of her sex. It was not that he felt any emotion akin to love for Irene Adler. All emotions, and that one particularly, were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning and observing machine that the world has seen, but as a lover he would have placed himself in a false position. He never spoke of the softer passions, save with a gibe and a sneer.")

@@ -2,7 +2,7 @@
 
 collectors = ['batch', 'incremental', 'incremental2']
 benchs = []
-`ls basic/*.rkt`.each_line do |f|
+`ls mutators/*.rkt`.each_line do |f|
   benchs.push f.chop
 end
 
@@ -12,7 +12,7 @@ ARGV.each do |arg|
     collectors = arg.split('=')[1].split(',')
   when /^-b=/
     benchs = arg.split('=')[1].split(',')
-    benchs = benchs.map { |b| "basic/#{b}.rkt" }
+    benchs = benchs.map { |b| "mutators/#{b}.rkt" }
   else
     puts "Unknown Argument #{arg}"
   end
