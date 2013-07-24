@@ -110,7 +110,7 @@
     [(_ id) (identifier? #'id)
             #`(make-root 'id
                          (λ () 
-                            id)
+                           id)
                          (λ (loc) (set! id loc)))]))
 
 ;;; Roots on the stack.
@@ -127,7 +127,7 @@
 (define (make-stack-root id location)
   (make-root id
              (λ () 
-                location)
+               location)
              (λ (new-location) (set! location new-location))))
 
 (provide/contract (read-root (root? . -> . location?)))
@@ -154,15 +154,25 @@
 (define (add-active-root! root)
   (set! active-roots (cons root active-roots)))
 
+(provide/contract (add-active-roots! ((listof root?) . -> . void?)))
+(define (add-active-roots! roots)
+  (set! active-roots (append roots active-roots)))
+
 (provide/contract (get-active-roots (-> (listof root?))))
 (define (get-active-roots)
   (filter is-mutable-root? active-roots))
 
-(provide/contract (get-root-loc (root? . -> . location?)))
-(define (get-root-loc root)
-  (let ([loc (read-root root)])
-    (clear-active-roots!)
-    loc))
+(provide/contract (remove-active-root! (root? . -> . void?)))
+(define (remove-active-root! root)
+  (set! active-roots (remove root active-roots)))
+
+(provide/contract (remove-active-roots! ((listof root?) . -> . void?)))
+(define (remove-active-roots! roots)
+  (set! active-roots
+        (let loop ([l roots] [result active-roots])
+          (if (null? l)
+              result
+              (loop (cdr l) (remove (car l) result))))))
 
 (provide/contract (clear-active-roots! (-> void?)))
 (define (clear-active-roots!)
@@ -178,9 +188,9 @@
           (list (if (location? root-id)
                     (make-root 'root-id 
                                (λ ()
-                                  root-id) 
+                                 root-id) 
                                (λ (loc) 
-                                  (set! root-id loc)))
+                                 (set! root-id loc)))
                     (error 'get-root-set "expected a location, given ~e" root-id))
                 ...)
           (get-global-roots)
@@ -201,10 +211,10 @@
 (define (vector->roots v)
   (for/list ([e (in-vector v)]
              [i (in-naturals)])
-            (make-root 'vector
-                       (λ () 
-                          (vector-ref v i))
-                       (λ (ne) (vector-set! v i ne)))))
+    (make-root 'vector
+               (λ () 
+                 (vector-ref v i))
+               (λ (ne) (vector-set! v i ne)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Environments of closures

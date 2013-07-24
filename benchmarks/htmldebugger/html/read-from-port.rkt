@@ -1,20 +1,15 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 10240)
+(allocator-setup "../../collector.rkt" 2048)
 (require "xml-structures.rkt"
          "hash.rkt"
          "list.rkt")
 (import-primitives
+ open-input-file
  string->number string-append string=? string<? string>? bytes->string/utf-8
  string->symbol symbol->string list->string string-downcase string-length string-ref
  char? char-alphabetic? char-numeric? eof-object?
  format read-string read-char peek-char file-position
  regexp-match regexp-replace* regexp-match-positions)
-(provide (all-from-out "hash.rkt")
-         (all-from-out "list.rkt")
-         read-html-comments
-         trim-whitespace
-         gen-may-contain
-         gen-read-sgml)
 
 (define (local-file-position in)
   (make-location 0 0 (file-position in)))
@@ -47,11 +42,6 @@
   (read-from-port may-contain auto-insert in))
 
 ;; read-from-port : Kid-lister (Symbol Symbol -> (U #f Symbol)) Input-port -> (listof Content)
-(define (read-tokens in)
-  (let ([tok (lex in)])
-    (cond
-      [(eof-object? tok) empty]
-      [else (cons tok (read-tokens in))])))
 (define (read-from-port-loop tokens may-contain auto-insert)
   (cond
     [(empty? tokens) empty]
@@ -176,7 +166,7 @@
 
 ;; lex : Input-port -> Token
 (define (lex in)
-  (when (trim-whitespace)
+  (when trim-whitespace
     (skip-space in))
   (let ([c (peek-char in)])
     (cond
@@ -325,7 +315,7 @@
       (make-pcdata start
                    (local-file-position in)
                    (bytes->string/utf-8
-                    (if (trim-whitespace)
+                    (if trim-whitespace
                         (regexp-replace* #rx#"[ \t\v\r\n]+" (first s) #"")
                         (first s))
                     #\?)))))
@@ -338,7 +328,7 @@
 			(cond
 			 [(or (eof-object? next) (eq? next #\&) (eq? next #\<))
 			  (list c)]
-			 [(and (char-whitespace? next) (trim-whitespace))
+			 [(and (char-whitespace? next) trim-whitespace)
 			  (skip-space in)
 			  (let ([lst (loop #\space)])
 			    (cond
@@ -488,3 +478,11 @@
 (define lex-comment-contents (gen-read-until-string "-->"))
 (define lex-pi-data (gen-read-until-string "?>"))
 (define lex-cdata-contents (gen-read-until-string "]]>"))
+
+;; test
+(define (read-tokens in)
+  (let ([tok (lex in)])
+    (cond
+      [(eof-object? tok) empty]
+      [else (cons tok (read-tokens in))])))
+(read-tokens (open-input-file "0.html"))

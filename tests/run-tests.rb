@@ -13,7 +13,7 @@ collectors.each do |c|
     puts "### #{cl} ###"
     puts ""
 
-    `ls *.rkt | egrep -v "cache|collector|util\.rkt"`.each_line do |f|
+    `ls *.rkt | egrep -v "cache|collector|hash|list\.rkt"`.each_line do |f|
       f = f.chop
       puts f
       `racket #{f} > /dev/null`

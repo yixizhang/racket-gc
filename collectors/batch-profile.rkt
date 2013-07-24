@@ -290,6 +290,12 @@
   (heap-set!/bm (+ next 3) fields-count)
   next)
 
+(define (gc:struct? loc)
+  (case (heap-ref/bm loc)
+    [(struct) #t]
+    [(frwd) (gc:struct? (heap-ref/bm (+ loc 1)))]
+    [else #f]))
+
 (define (gc:alloc-struct-instance s fields-value)
   (define fv-count (vector-length fields-value))
   (define fv-roots (vector->roots fields-value))
@@ -309,6 +315,12 @@
                (vector-ref fields-value x)))
   (heap-set!/bm next 'struct-instance)
   next)
+
+(define (gc:struct-instance? loc)
+  (case (heap-ref/bm loc)
+    [(struct-instance) #t]
+    [(frwd) (gc:struct-instance? (heap-ref/bm (+ loc 1)))]
+    [else #f]))
 
 (define (gc:struct-pred s instance)
   (and (equal? (heap-ref/bm s) 'struct)

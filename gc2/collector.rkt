@@ -36,13 +36,13 @@
                                     gc:closure gc:closure? gc:closure-code-ptr gc:closure-env-ref
                                     gc:cons? gc:set-first! gc:set-rest!
                                     gc:vector gc:vector? gc:vector-length gc:vector-ref gc:vector-set!
-                                    gc:alloc-struct gc:alloc-struct-instance gc:struct-pred gc:struct-select gc:struct-set!)
+                                    gc:alloc-struct gc:struct? gc:alloc-struct-instance gc:struct-instance? gc:struct-pred gc:struct-select gc:struct-set!)
                     (map (λ (s) (datum->syntax stx s))
                          '(init-allocator gc:deref gc:alloc-flat gc:cons gc:first gc:rest gc:flat? 
                                           gc:closure gc:closure? gc:closure-code-ptr gc:closure-env-ref
                                           gc:cons? gc:set-first! gc:set-rest!
                                           gc:vector gc:vector? gc:vector-length gc:vector-ref gc:vector-set!
-                                          gc:alloc-struct gc:alloc-struct-instance gc:struct-pred gc:struct-select gc:struct-set!))])
+                                          gc:alloc-struct gc:struct? gc:alloc-struct-instance gc:struct-instance? gc:struct-pred gc:struct-select gc:struct-set!))])
        #`(#%module-begin 
           
           (require (for-syntax scheme))
@@ -75,7 +75,9 @@
           (provide/contract (gc:vector-set! (location? integer? location? . -> . void?)))
           
           (provide/contract (gc:alloc-struct (symbol? (or/c location? #f) number? . -> . location?)))
+          (provide/contract (gc:struct? (location? . -> . boolean?)))
           (provide/contract (gc:alloc-struct-instance (location? (vectorof location?) . -> . location?)))
+          (provide/contract (gc:struct-instance? (location? . -> . boolean?)))
           (provide/contract (gc:struct-pred (location? location? . -> . boolean?)))
           (provide/contract (gc:struct-select (location? location? number? . -> . location?)))
           (provide/contract (gc:struct-set! (location? location? number? location? . -> . void?)))

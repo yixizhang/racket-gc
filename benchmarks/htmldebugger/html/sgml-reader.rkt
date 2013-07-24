@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 10240)
+(allocator-setup "../../collector.rkt" 2048)
 (require "xml-structures.rkt"
          "hash.rkt"
          "list.rkt")
@@ -176,7 +176,7 @@
 
 ;; lex : Input-port -> Token
 (define (lex in)
-  (when (trim-whitespace)
+  (when trim-whitespace
     (skip-space in))
   (let ([c (peek-char in)])
     (cond
@@ -325,7 +325,7 @@
       (make-pcdata start
                    (local-file-position in)
                    (bytes->string/utf-8
-                    (if (trim-whitespace)
+                    (if trim-whitespace
                         (regexp-replace* #rx#"[ \t\v\r\n]+" (first s) #"")
                         (first s))
                     #\?)))))
@@ -338,7 +338,7 @@
 			(cond
 			 [(or (eof-object? next) (eq? next #\&) (eq? next #\<))
 			  (list c)]
-			 [(and (char-whitespace? next) (trim-whitespace))
+			 [(and (char-whitespace? next) trim-whitespace)
 			  (skip-space in)
 			  (let ([lst (loop #\space)])
 			    (cond

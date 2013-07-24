@@ -1,13 +1,11 @@
 #lang plai/gc2/mutator
-
 (allocator-setup "../../collector.rkt" 10240)
-
 (require "html-structs.rkt"
          "html-spec.rkt"
          "sgml-reader.rkt"
-         "util.rkt"
          "xml-structures.rkt")
-
+(import-primitives
+ current-input-port)
 (provide (all-from-out "html-structs.rkt")
          (all-defined-out))
 #|
@@ -17,6 +15,11 @@
  [read-xhtml (() (input-port?) . ->* . html?)]
  [read-html-as-xml (() (input-port?) . ->* . (listof content/c))])
 |#
+
+;; compose : proc proc -> proc
+(define (compose f g)
+  (lambda (x)
+    (f (g x))))
 
 ;; xml-single-content->html : Content (listof Html-content) -> (listof Html-content)
 (define (xml-single-content->html x acc)

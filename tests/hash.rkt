@@ -1,13 +1,14 @@
 #lang plai/gc2/mutator
 (allocator-setup "collector.rkt" 512)
 (provide (all-defined-out))
+(import-primitives
+  not modulo
+  procedure? procedure-arity-includes?
+  equal-hash-code)
 
-(define (null? thing) (empty? thing))
-(define (not pred) (if pred #f #t))
 (define-struct hash-table (vec))
 (define-struct kv (key value))
 (define (make-hash) (make-hash-table (make-vector 10 empty)))
-;; set/append-it! : (listof kv) vector number key kv -> void
 (define (set/append-it! lst vec index key kv)
   (cond
     [(null? lst)
@@ -41,35 +42,6 @@
          [v (hash-table-vec hash)]
          [lst (vector-ref v (modulo i (vector-length v)))])
     (get-it lst key fail)))
-(define (compose f g)
-  (lambda (x)
-    (f (g x))))
-(define (memq value lst)
-  (cond
-    [(null? lst) #f]
-    [else
-     (if (eq? (first lst) value)
-         lst
-         (memq value (rest lst)))]))
-(define (memf proc lst)
-  (cond
-    [(null? lst) #f]
-    [else (if (proc (first lst))
-              lst
-              (memf proc (rest lst)))]))
-(define (filter proc lst)
-  (cond
-    [(null? lst) empty]
-    [else (let ([e (first lst)])
-            (if (proc e)
-                (cons e (filter proc (rest lst)))
-                (filter proc (rest lst))))]))
-(define (append some-list more-list)
-  (cond
-    [(null? some-list) more-list]
-    [else
-     (cons (first some-list)
-           (append (rest some-list) more-list))]))
 (define (list? l)
   (or (empty? l) (and (cons? l) (list? (rest l)))))
 (define (last l)
@@ -79,7 +51,6 @@
        [(cons? (rest l)) (last (rest l))]
        [else (rest l)])]
     [else (error 'last "expected a cons")]))
-;; append! : list list -> list
 (define (append! some-list more-list)
   (cond
     [(and (null? some-list) (list? more-list))
@@ -96,29 +67,3 @@
        orig-list)]
     [else
      (append!-helper orig-list (rest some-list) more-list)]))
-;; foldr : proc init lst -> any/c
-(define (reverse/helper lst l)
-  (cond
-    [(null? lst) l]
-    [else (reverse/helper (rest lst) (cons (first lst) l))]))
-(define (reverse lst)
-  (reverse/helper lst empty))
-(define (fold/helper proc result l)
-  (cond
-    [(null? l) result]
-    [else (fold/helper proc
-                       (proc (first l) result)
-                       (rest l))]))
-(define (foldr proc init lst)
-  (fold/helper proc init (reverse lst)))
-;; map : proc lst -> lst
-(define (map proc lst)
-  (cond
-    [(null? lst) empty]
-    [else (cons (proc (first lst)) 
-                (map proc (rest lst)))]))
-;; for-each : proc lst -> void
-(define (for-each f l)
-  (cond
-    [(null? l) (void)]
-    [else (begin (f (first l)) (for-each f (rest l)))]))

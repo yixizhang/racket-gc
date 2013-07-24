@@ -42,12 +42,18 @@
 (define (gc:closure-code-ptr loc)
   (if (gc:closure? loc)
       (heap-ref (+ loc 1))
-      (error 'gc:closure-code "non closure")))
+      (error 'gc:closure-code 
+             "non closure @ ~s, got ~s"
+             loc
+             (heap-ref loc))))
 
 (define (gc:closure-env-ref loc i)
   (if (gc:closure? loc)
       (heap-ref (+ loc 3 i))
-      (error 'closure-env-ref "non closure")))
+      (error 'closure-env-ref 
+             "non closure @ ~s, got ~s"
+             loc
+             (heap-ref loc))))
 
 (define (gc:closure? loc)
   (equal? (heap-ref loc) 'proc))
@@ -132,6 +138,12 @@
   (heap-set! (+ next 3) fields-count)
   next)
 
+(define (gc:struct? loc)
+  (case (heap-ref loc)
+    [(struct) #t]
+    [(frwd) (gc:struct? (heap-ref (+ loc 1)))]
+    [else #f]))
+
 (define (gc:alloc-struct-instance s fields-value)
   (define fv-count (vector-length fields-value))
   (define fv-roots (vector->roots fields-value))
@@ -144,6 +156,12 @@
     (heap-set! (+ next 2 x)
                (vector-ref fields-value x)))
   next)
+
+(define (gc:struct-instance? loc)
+  (case (heap-ref loc)
+    [(struct-instance) #t]
+    [(frwd) (gc:struct-instance? (heap-ref (+ loc 1)))]
+    [else #f]))
 
 (define (gc:struct-pred s instance)
   (local [(define (helper target s)
@@ -244,39 +262,41 @@
        (error 'mark-white! "unknown tag @ ~a" i)])))
 
 (define (free-white! i)
-  (when (< i (heap-size))
-    (case (heap-ref i)
-      [(pair) (free-white! (+ i 3))]
-      [(flat) (free-white! (+ i 2))]
-      [(proc) (free-white! (+ i 3 (heap-ref (+ i 2))))]
-      [(vector) (free-white! (+ i 2 (heap-ref (+ i 1))))]
-      [(struct) (free-white! (+ i 4))]
-      [(struct-instance) (define fv-count (heap-ref (+ 3 (heap-ref (+ i 1)))))
-                         (free-white! (+ i 2 fv-count))]
-      [(white-pair) (heap-set! i 'free)
-                    (heap-set! (+ i 1) 'free)
-                    (heap-set! (+ i 2) 'free)
-                    (free-white! (+ i 3))]
-      [(white-flat) (heap-set! i 'free)
-                    (heap-set! (+ i 1) 'free)
-                    (free-white! (+ i 2))]
-      [(white-proc) (define closure-size (heap-ref (+ i 2)))
-                    (for ([dx (in-range 0 (+ closure-size 3))])
-                      (heap-set! (+ i dx) 'free))
-                    (free-white! (+ i 3 closure-size))]
-      [(white-vector) (define length (heap-ref (+ i 1)))
-                      (for ([dx (in-range (+ 2 length))])
-                        (heap-set! (+ i dx) 'free))
-                      (free-white! (+ i 2 length))]
-      [(white-strut) (for ([dx (in-range 4)])
-                       (heap-set! (+ i dx) 'free))
-                     (free-white! (+ i 4))]
-      [(white-struct-instance) (define fv-count (heap-ref (+ 3 (heap-ref (+ i 1)))))
-                               (for ([dx (in-range (+ 2 fv-count))])
-                                 (heap-set! (+ i dx) 'free))
-                               (free-white! (+ i 2 fv-count))]
-      [(free) (free-white! (+ i 1))]
-      [else (error 'free-white! "unknown tag ~s" (heap-ref i))])))
+  (cond
+    [(< i (heap-size))
+     (case (heap-ref i)
+       [(pair) (free-white! (+ i 3))]
+       [(flat) (free-white! (+ i 2))]
+       [(proc) (free-white! (+ i 3 (heap-ref (+ i 2))))]
+       [(vector) (free-white! (+ i 2 (heap-ref (+ i 1))))]
+       [(struct) (free-white! (+ i 4))]
+       [(struct-instance) (define fv-count (heap-ref (+ 3 (heap-ref (+ i 1)))))
+                          (free-white! (+ i 2 fv-count))]
+       [(white-pair) (heap-set! i 'free)
+                     (heap-set! (+ i 1) 'free)
+                     (heap-set! (+ i 2) 'free)
+                     (free-white! (+ i 3))]
+       [(white-flat) (heap-set! i 'free)
+                     (heap-set! (+ i 1) 'free)
+                     (free-white! (+ i 2))]
+       [(white-proc) (define closure-size (heap-ref (+ i 2)))
+                     (for ([dx (in-range 0 (+ closure-size 3))])
+                          (heap-set! (+ i dx) 'free))
+                     (free-white! (+ i 3 closure-size))]
+       [(white-vector) (define length (heap-ref (+ i 1)))
+                       (for ([dx (in-range (+ 2 length))])
+                            (heap-set! (+ i dx) 'free))
+                       (free-white! (+ i 2 length))]
+       [(white-strut) (for ([dx (in-range 4)])
+                           (heap-set! (+ i dx) 'free))
+                      (free-white! (+ i 4))]
+       [(white-struct-instance) (define fv-count (heap-ref (+ 3 (heap-ref (+ i 1)))))
+                                (for ([dx (in-range (+ 2 fv-count))])
+                                     (heap-set! (+ i dx) 'free))
+                                (free-white! (+ i 2 fv-count))]
+       [(free) (free-white! (+ i 1))]
+       [else (error 'free-white! "unknown tag ~s" (heap-ref i))])]
+    [else (check/free 0)]))
 
 (define (traverse/roots thing)
   (cond
@@ -317,3 +337,30 @@
        (traverse/loc (heap-ref (+ loc 2 i))))]
     [(pair flat proc vector struct struct-instance) (void)]
     [else (error 'traverse/loc "crash ~s" loc)]))
+
+(define (check/free loc)
+  (define (helper loc)
+    (case (heap-ref loc)
+      [(pair flat proc vector struct struct-instance) (void)]
+      [else (error 'check/free "expected tag @ ~s" loc)]))
+  (when (< loc (heap-size))
+    (case (heap-ref loc)
+      [(free) (check/free (+ loc 1))]
+      [(pair) (helper (heap-ref (+ loc 1)))
+              (helper (heap-ref (+ loc 2)))
+              (check/free (+ loc 3))]
+      [(flat) (check/free (+ loc 2))]
+      [(proc) (for ([dx (in-range (heap-ref (+ loc 2)))])
+                   (helper (heap-ref (+ loc 3 dx))))
+              (check/free (+ loc 3 (heap-ref (+ loc 2))))]
+      [(vector) (for ([dx (in-range (heap-ref (+ loc 1)))])
+                     (helper (heap-ref (+ loc 2 dx))))
+                (check/free (+ loc 2 (heap-ref (+ loc 1))))]
+      [(struct) (if (heap-ref (+ loc 2))
+                    (helper (heap-ref (+ loc 2)))
+                    (void))
+                (check/free (+ loc 4))]
+      [(struct-instance) (helper (heap-ref (+ loc 1)))
+                         (for ([dx (in-range (heap-ref (+ 3 (heap-ref (+ loc 1)))))])
+                              (helper (+ loc 2 dx)))
+                         (check/free (+ loc 2 (heap-ref (+ 3 (heap-ref (+ loc 1))))))])))

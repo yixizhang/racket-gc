@@ -8,6 +8,8 @@
          (only-in plai/test-harness
                   exn:plai? equal~?
                   plai-error generic-test test halt-on-errors print-only-errors)
+         (only-in racket/base
+                  struct)
          (for-syntax scheme)
          (for-syntax plai/gc2/private/gc-transformer)
          scheme/stxparam
@@ -43,53 +45,10 @@
           (collector:first first)
           (collector:rest rest)
           
-          (mutator-equal? equal?)
           (mutator-quote quote)
           (mutator-top-interaction #%top-interaction)
           (mutator-module-begin #%module-begin)
-          (mutator-current-input-port current-input-port)
-          (mutator-open-input-file open-input-file)
-          (mutator-open-input-string open-input-string)
-          (mutator-define-struct define-struct)
-          (mutator-read-char read-char)
-          (mutator-peek-char peek-char)
-          (mutator-eof-object? eof-object?)
-          (mutator-make-vector make-vector)
-          (mutator-vector-length vector-length)
-          (mutator-vector-ref vector-ref)
-          (mutator-vector-set! vector-set!)
-          (mutator-modulo modulo)
-          (mutator-exact-nonnegative-integer? exact-nonnegative-integer?)
-          (mutator-equal-hash-code equal-hash-code)
-          (mutator-procedure? procedure?)
-          (mutator-procedure-arity-includes? procedure-arity-includes?)
-          (mutator-file-position file-position)
-          (mutator-call-with-input-file call-with-input-file)
-          (mutator-current-command-line-arguments current-command-line-arguments)
-          
-          (mutator-string->number string->number)
-          (mutator-string-append string-append)
-          (mutator-format format)
-          (mutator-read-string read-string)
-          (mutator-string=? string=?)
-          (mutator-sort sort)
-          (mutator-string<? string<?)
-          (mutator-symbol->string symbol->string)
-          (mutator-string->symbol string->symbol)
-          (mutator-list->string list->string)
-          (mutator-string-downcase string-downcase)
-          (mutator-string-length string-length)
-          (mutator-string-ref string-ref)
-          
-          (mutator-regexp-match regexp-match)
-          (mutator-regexp-replace* regexp-replace*)
-          (mutator-regexp-match-positions regexp-match-positions)
-          (mutator-bytes->string/utf-8 bytes->string/utf-8)
-          
-          (mutator-char? char?)
-          (mutator-char-alphabetic? char-alphabetic?)
-          (mutator-char-numeric? char-numeric?)
-          ))
+          (mutator-define-struct define-struct)))
 
 (define-syntax-parameter mutator-name #f)
 (define-syntax-parameter mutator-tail-call? #t)
@@ -410,6 +369,18 @@
                       (collector:struct-set! struct:s a #,i value))))))]))
 (begin-for-syntax
   (define-struct define-struct-info (fields) #:prefab))
+;; struct constructors
+(define sc (make-hash))
+(define-syntax (mk-s-macro stx)
+  (syntax-case stx ()
+    [(_ s (x ...) sc)
+     #`(begin
+         (struct s (x ...))
+         (hash-set! sc (format "~a" s) s))]
+    [(_ s t (x ...) sc)
+     #`(begin
+         (struct s t (x ...))
+         (hash-set! sc (format "~a" s) s))]))
 (define-syntax (mutator-define-struct stx)
   (syntax-case stx ()
     [(_ s (f ...))
@@ -418,9 +389,11 @@
        (for ([x (in-list (syntax->list #'(f ...)))])
          (unless (identifier? x)
            (raise-syntax-error 'define-struct "expected an identifier" stx x)))
-       #`(begin
-           (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
-           (define-struct/offset #,(datum->syntax #f '()) #f s (f ...))))]
+       (with-syntax ([local-s (datum->syntax #'s (string->symbol (format "mutator:~a" (syntax-e #'s))))])
+         #`(begin
+             (mk-s-macro local-s (f ...) sc)
+             (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
+             (define-struct/offset #,(datum->syntax #f '()) #f s (f ...)))))]
     [(_ (s t) (f ...))
      (begin
        (unless (identifier? #'s)
@@ -434,9 +407,12 @@
        (let ([parent-fields (define-struct-info-fields (syntax-local-value #'t))]
              [parent-struct (datum->syntax #'t (string->symbol
                                                 (format "struct:~a" (syntax-e #'t))))])
-         #`(begin
-             (define-syntax s #,(make-define-struct-info (append parent-fields (syntax->list #'(f ...)))))
-             (define-struct/offset #,parent-fields #,parent-struct s (f ...)))))]))
+         (with-syntax ([local-s (datum->syntax #'s (string->symbol (format "mutator:~a" (syntax-e #'s))))]
+                       [local-t (datum->syntax #'t (string->symbol (format "mutator:~a" (syntax-e #'t))))])
+           #`(begin
+               (mk-s-macro local-s local-t (f ...) sc)
+               (define-syntax s #,(make-define-struct-info (append parent-fields (syntax->list #'(f ...)))))
+               (define-struct/offset #,parent-fields #,parent-struct s (f ...))))))]))
 
 ; Module Begin
 (define-for-syntax (allocator-setup-internal stx)
@@ -449,7 +425,7 @@
                                     gc:set-first! gc:set-rest!
                                     gc:vector gc:vector? 
                                     gc:vector-length gc:vector-ref gc:vector-set!
-                                    gc:alloc-struct gc:alloc-struct-instance
+                                    gc:alloc-struct gc:struct? gc:alloc-struct-instance gc:struct-instance?
                                     gc:struct-pred gc:struct-select gc:struct-set!)
                     (map (λ (s) (datum->syntax stx s))
                          '(init-allocator gc:deref gc:alloc-flat gc:cons 
@@ -459,7 +435,7 @@
                                           gc:set-first! gc:set-rest!
                                           gc:vector gc:vector? 
                                           gc:vector-length gc:vector-ref gc:vector-set!
-                                          gc:alloc-struct gc:alloc-struct-instance 
+                                          gc:alloc-struct gc:struct? gc:alloc-struct-instance gc:struct-instance?
                                           gc:struct-pred gc:struct-select gc:struct-set!))]) 
        (begin
          #`(begin
@@ -486,14 +462,16 @@
              (set-collector:vector-ref! 'collector-module gc:vector-ref)
              (set-collector:vector-set!! 'collector-module gc:vector-set!)
              (set-collector:alloc-struct! 'collector-module gc:alloc-struct)
+             (set-collector:struct?! 'collector-module gc:struct?)
              (set-collector:alloc-struct-instance! 'collector-module gc:alloc-struct-instance)
+             (set-collector:struct-instance?! 'collector-module gc:struct-instance?)
              (set-collector:struct-pred! 'collector-module gc:struct-pred)
              (set-collector:struct-select! 'collector-module gc:struct-select)
              (set-collector:struct-set!! 'collector-module gc:struct-set!)
              
              (init-heap! (#%datum . heap-size) init-allocator)
              (when (gui-available?) 
-               (if (<= (#%datum . heap-size) 512)
+               (if (<= (#%datum . heap-size) 1024)
                    (set-ui! (dynamic-require `plai/gc2/private/gc-gui 'heap-viz%))
                    (printf "Large heap; the heap visualizer will not be displayed.\n"))))))]
     [_ (raise-syntax-error 'mutator 
@@ -541,16 +519,41 @@
            ;; XXX make a macro to unify this and provide/lift
            (define id
              (lambda args
-               (unless (andmap (lambda (v) (and (location? v) (collector:flat? v))) args)
-                 (error 'id (string-append "all arguments must be <heap-value?>s, "
-                                           "even if the imported procedure accepts structured "
-                                           "data")))
-               (let ([result (apply renamed-id (map collector:deref args))])
+               (for ([arg (in-list args)])
+                 (unless ((lambda (v) 
+                            (or (and (location? v) 
+                                     (or (collector:flat? v)
+                                         (collector:cons? v)
+                                         (collector:closure? v)
+                                         (collector:vector? v)
+                                         (collector:struct-instance? v)))
+                                (procedure? v)))
+                          arg)
+                   (error 'id (string-append "all arguments must be <heap-value?>s, "
+                                             "or structured data of <heap-value?>s, "
+                                             "but got ~s\n") (heap-ref arg))))
+               (let ([result (apply renamed-id 
+                                    (map (λ (x) 
+                                           (cond [(or (procedure? x) (collector:closure? x)) (deref-proc x)]
+                                                 [(or (collector:flat? x) (collector:cons? x) (collector:vector? x) (collector:struct-instance? x))
+                                                  (gc->scheme x)]))
+                                         args))])
                  (cond
                    [(void? result) (void)]
-                   [(heap-value? result) (collector:alloc-flat result)]
+                   ;; do-alloc or this section is buggy
+                   [(or (heap-value? result)
+                        (pair? result)
+                        (vector? result))
+                    (let ([locals (map (λ (x)
+                                         (make-env-root x))
+                                       (filter location? args))])
+                      (add-active-roots! locals)
+                      (define loc (do-alloc result))
+                      (remove-active-roots! locals)
+                      loc)]
                    [else 
                     (error 'id (string-append "imported primitive must return <heap-value?>, "
+                                              "or structured data of <heap-valus?>s, "
                                               "received ~a" result))]))))
            ...))]
     [(_ maybe-id ...) 
@@ -583,178 +586,59 @@
            (provide (rename-out [id2 id] ...))
            (define-syntax id2 (mk-id-macro #'id)) ...))]))
 
+(define-syntax (define/primitive stx)
+  (syntax-case stx ()
+    [(_ (f x ...) expr)
+     (with-syntax ([(tmp ...) (generate-temporaries (syntax->list #'(x ...)))])
+       #`(define (f x ...)
+           (let ([tmp (make-env-root x)] ...)
+             (add-active-roots! (list tmp ...))
+             (define loc expr)
+             (remove-active-roots! (list tmp ...))
+             loc)))]))
+
 (provide-flat-prims/lift
  prim-ids
  symbol? boolean? number? symbol=?
- add1 sub1 zero? + - * / even? odd? = < > <= >=)
+ add1 sub1 zero? exact? + - * / even? odd? = < > <= >=)
 
 (define (member? v l)
   (and (member v l) #t))
+(provide (rename-out (mutator-member? member?)))
 (define (mutator-member? v l)
   (collector:alloc-flat
-   (member? (collector:deref v)
+   (member? (gc->scheme v)
             (gc->scheme l))))
-(define (mutator-equal? a b)
-  (collector:alloc-flat
-   (or (= a b)
-       (and (or (and (collector:flat? a)
-                     (collector:flat? b))
-                (and (collector:cons? a)
-                     (collector:cons? b))
-                (and (collector:closure? a)
-                     (collector:closure? b))
-                (and (collector:vector? a)
-                     (collector:vector? b)))
-            (equal? (gc->scheme a) (gc->scheme b))))))
-(define (mutator-current-input-port)
-  (collector:alloc-flat
-   (current-input-port)))
-(define (mutator-open-input-file path)
-  (collector:alloc-flat
-   (open-input-file (collector:deref path))))
-(define (mutator-open-input-string s)
-  (collector:alloc-flat
-   (open-input-string (collector:deref s))))
-(define (mutator-read-char port)
-  (collector:alloc-flat
-   (read-char (collector:deref port))))
-(define (mutator-peek-char port)
-  (collector:alloc-flat
-   (peek-char (collector:deref port))))
-(define (mutator-eof-object? thing)
-  (collector:alloc-flat
-   (eof-object? (collector:deref thing))))
-(define (mutator-modulo x y)
-  (collector:alloc-flat
-   (modulo (collector:deref x)
-           (collector:deref y))))
-(define (mutator-exact-nonnegative-integer? i)
-  (collector:alloc-flat 
-   (exact-nonnegative-integer? (collector:deref i))))
-(define (mutator-equal-hash-code thing)
-  (collector:alloc-flat
-   (equal-hash-code (gc->scheme thing))))
-(define (mutator-procedure? proc/loc)
-  (define r (make-env-root proc/loc))
-  (add-active-root! r)
-  
-  (collector:alloc-flat (procedure? (deref-proc (get-root-loc r)))))
-(define (mutator-procedure-arity-includes? proc num)
-  (define r (make-env-root proc))
-  (add-active-root! r)
-  
-  (collector:alloc-flat (procedure-arity-includes? (deref-proc (get-root-loc r))
-                                                   (collector:deref num))))
-(define (mutator-file-position port)
-  (collector:alloc-flat (file-position (collector:deref port))))
-(define (mutator-call-with-input-file path/loc proc/loc)
-  (define r (make-env-root proc/loc))
-  (add-active-root! r)
-  
-  (call-with-input-file (collector:deref path/loc)
-    (deref-proc (get-root-loc r))))
-(define (mutator-current-command-line-arguments)
-  (define args (current-command-line-arguments))
-  (define v (collector:vector (vector-length args) (collector:alloc-flat #f)))
-  (for ([val (in-vector args)]
-        [i (in-naturals)])
-    (collector:vector-set! v
-                           i
-                           (collector:alloc-flat val)))
-  v)
 
-;; string related
-(define (mutator-string->number thing)
-  (collector:alloc-flat (string->number (collector:deref thing))))
-(define (mutator-string-append a b)
-  (collector:alloc-flat (string-append (collector:deref a)
-                                       (collector:deref b))))
-(define-syntax (mutator-format stx)
-  (syntax-case stx ()
-    [(_ form v ...)
-     #`(collector:alloc-flat
-        (format (gc->scheme form)
-                #,@(for/list ([v-v (in-list (syntax->list #`(v ...)))])
-                     #`(gc->scheme #,v-v))))]))
-(define (mutator-read-string amt in)
-  (collector:alloc-flat (read-string (collector:deref amt)
-                                     (collector:deref in))))
-(define (mutator-string=? a b)
-  (collector:alloc-flat (string=? (collector:deref a)
-                                  (collector:deref b))))
-(define (mutator-string<? a b)
-  (collector:alloc-flat (string<? (collector:deref a)
-                                  (collector:deref b))))
-(define (mutator-symbol->string thing)
-  (collector:alloc-flat (symbol->string (collector:deref thing))))
-(define (mutator-string->symbol thing)
-  (collector:alloc-flat (string->symbol (collector:deref thing))))
-;; mutator-list->string : loc -> string
-(define (mutator-list->string loc)
-  (collector:alloc-flat
-   (list->string (gc->scheme loc))))
-(define (mutator-string-downcase s)
-  (collector:alloc-flat (string-downcase (collector:deref s))))
-(define (mutator-string-length thing)
-  (collector:alloc-flat (string-length (collector:deref thing))))
-(define (mutator-string-ref str k)
-  (collector:alloc-flat (string-ref (collector:deref str)
-                                    (collector:deref k))))
+(provide (rename-out [mutator-sort sort]))
+(define/primitive (mutator-sort seq less?)
+  (do-alloc 
+   (map collector:deref
+        (sort (copy-gc-pair seq)
+              (lambda (a b)
+                (collector:deref ((deref-proc less?) a b)))))))
 
-;; regexp related
-(define (mutator-regexp-match pattern input)
-  (scheme->gc (regexp-match (collector:deref pattern)
-                            (collector:deref input))))
-(define (mutator-regexp-replace* pattern input insert)
-  (collector:alloc-flat (regexp-replace* (collector:deref pattern)
-                                         (collector:deref input)
-                                         (collector:deref insert))))
-;; mutator-regexp-match-positions : byte-regexp?(loc) bytes?/string?(loc) -> boolean?(loc)
-(define (mutator-regexp-match-positions pattern input)
-  (scheme->gc (regexp-match-positions (collector:deref pattern)
-                                      (collector:deref input))))
-(define (mutator-bytes->string/utf-8 thing)
-  (collector:alloc-flat (bytes->string/utf-8 (collector:deref thing))))
-
-;; char related
-(define (mutator-char? thing)
-  (collector:alloc-flat (char? (collector:deref thing))))
-(define (mutator-char-alphabetic? thing)
-  (collector:alloc-flat (char-alphabetic? (collector:deref thing))))
-(define (mutator-char-numeric? thing)
-  (collector:alloc-flat (char-numeric? (collector:deref thing))))
-
-;; mutator-sort : loc loc -> loc
-(define (mutator-sort lst/loc less-than?/loc)
-  (define r (make-env-root less-than?/loc))
-  (add-active-root! r)
-  
-  (local [(define helper
-            (lambda (loc)
-              (cond
-                [(and (collector:flat? loc)
-                      (null? (collector:deref loc)))
-                 '()]
-                [else (cons (collector:first loc)
-                            (helper (collector:rest loc)))])))]
-    (scheme->gc (map collector:deref
-                     (sort (helper lst/loc)
-                           (lambda (a b)
-                             (collector:deref ((deref-proc (get-root-loc r)) a b))))))))
-
+(provide (rename-out (mutator-make-vector make-vector)))
 (define (mutator-make-vector length loc)
   (collector:vector (collector:deref length) 
                     loc))
+
+(provide (rename-out (mutator-vector-length vector-length)))
 (define (mutator-vector-length loc)
   (collector:alloc-flat (collector:vector-length loc)))
+
+(provide (rename-out (mutator-vector-ref vector-ref)))
 (define (mutator-vector-ref loc number)
   (collector:vector-ref loc 
                         (collector:deref number)))
+
+(provide (rename-out (mutator-vector-set! vector-set!)))
 (define (mutator-vector-set! loc number a-loc)
   (collector:vector-set! loc 
                          (collector:deref number)
                          a-loc)
   (void))
+
 (provide (rename-out (mutator-set-first! set-first!)))
 (define (mutator-set-first! x y)
   (collector:set-first! x y)
@@ -771,6 +655,7 @@
     [_ (mutator-quote ())]))
 
 (provide (rename-out (mutator-empty? empty?)))
+(provide (rename-out (mutator-empty? null?)))
 (define (mutator-empty? loc)
   (cond
     [(collector:flat? loc) 
@@ -790,6 +675,12 @@
      (collector:alloc-flat (equal? (collector:deref l1)
                                    (collector:deref l2)))]
     [else (collector:alloc-flat (= l1 l2))]))
+
+(provide (rename-out [mutator-equal? equal?]))
+(define (mutator-equal? l1 l2)
+  (collector:alloc-flat
+   (or (= l1 l2)
+       (equal? (gc->scheme l1) (gc->scheme l2)))))
 
 (provide (rename-out [mutator-printf printf]))
 (define-syntax (mutator-printf stx)
@@ -836,32 +727,47 @@
     [else
      (error 'procedure-application "expected procedure, given ~e" v)]))
 
-;; scheme->gc : any -> location?
-(define (scheme->gc thing)
-  (let ([r (let loop ([thing thing])
-             (cond
-               [(heap-value? thing) 
-                (let* ([flat/loc (collector:alloc-flat thing)]
-                       [flat/root (make-env-root flat/loc)])
-                  (begin
-                    (add-active-root! flat/root)
-                    flat/root))]
-               [(pair? thing) 
-                (let* ([pair/loc 
-                        (collector:cons (loop (car thing))
-                                        (loop (cdr thing)))]
-                       [pair/root (make-env-root pair/loc)])
-                  (begin
-                    (add-active-root! pair/root)
-                    pair/root))]))])
-    (let ([loc (read-root r)])
-      (clear-active-roots!)
-      loc)))
+(define (copy-gc-pair loc)
+  (cond [(and (collector:flat? loc)
+              (null? (collector:deref loc)))
+         '()]
+        [else (cons (collector:first loc)
+                    (copy-gc-pair (collector:rest loc)))]))
+
+(define (do-alloc value)
+  ;; value supports flat, cons, and vector
+  ;; any/c -> loc
+  (define local-roots empty)
+  (local [(define (mk-root loc)
+            (define r (make-env-root loc))
+            (add-active-root! r)
+            (set! local-roots (cons r local-roots))
+            r)
+          (define (alloc val)
+            (cond [(heap-value? val) (mk-root (collector:alloc-flat val))]
+                  [(pair? val) (mk-root (collector:cons (alloc (car val)) (alloc (cdr val))))]
+                  [(vector? val) 
+                   (let* ([vs (for/vector ([v (in-vector val)]) (alloc v))]
+                          [vec (mk-root (collector:vector (vector-length val) (alloc #f)))])
+                     (for ([v (in-vector vs)] [i (in-naturals)])
+                       (collector:vector-set! (read-root vec)
+                                              i 
+                                              (if (location? v) v (read-root v))))
+                     vec)]
+                  [else (error 'do-alloc "expected flat, pair or vector values, but get ~s" val)]))]
+    (let ([result (alloc value)])
+                  (remove-active-roots! local-roots)
+                  (read-root result))))
 
 (define (gc->scheme loc)
   (define-struct an-unset ())
   (define unset (make-an-unset))
   (define phs (make-hash))
+  (define (mk-s s fields)
+    (local [(define const (hash-ref sc
+                                    (format "#<procedure:~a>" s)
+                                    (λ () #f)))]
+      (apply const fields)))
   (define (unwrap loc)
     (if (hash-has-key? phs loc)
         (hash-ref phs loc)
@@ -882,14 +788,29 @@
                (placeholder-set! ph (closure-code-proc (collector:closure-code-ptr loc)))]
               [(collector:vector? loc)
                (local [(define vlen (collector:vector-length loc))
-                       (define v (make-vector vlen 0))]
+                       (define vec (make-vector vlen 0))]
                  (for ([i (in-range vlen)])
-                   (local [(define p (make-placeholder unset))]
-                     (placeholder-set! p (unwrap (collector:vector-ref loc i)))
-                     (vector-set! v i p)))
-                 (placeholder-set! ph v))]
+                   (local [(define vp (make-placeholder unset))]
+                     (placeholder-set! vp (unwrap (collector:vector-ref loc i)))
+                     (vector-set! vec i vp)))
+                 (placeholder-set! ph vec))]
+              [(collector:struct-instance? loc)
+               (local [(define (struct-symbol loc)
+                         (heap-ref (+ 1 (heap-ref (+ loc 1)))))
+                       (define (struct-type loc)
+                         (heap-ref (+ loc 1)))
+                       (define (struct-fcount loc)
+                         (heap-ref (+ 3 (heap-ref (+ loc 1)))))
+                       (define (struct-fvals loc)
+                         (let ([s (struct-type loc)])
+                           (for/list ([i (in-range (struct-fcount loc))])
+                             (begin
+                               (define fp (make-placeholder unset))
+                               (placeholder-set! fp (unwrap (collector:struct-select s loc i)))
+                               fp))))]
+                 (placeholder-set! ph (mk-s (format "mutator:~a" (struct-symbol loc)) (struct-fvals loc))))]
               [else 
-               (error (format "gc:flat?, gc:cons?, gc:closure?, gc:vector? all returned false for ~a" loc))])
+               (error (format "gc:flat?, gc:cons?, gc:closure?, gc:vector? gc:struct-instance? all returned false for ~a" loc))])
             (placeholder-get ph)))))
   (make-reader-graph (unwrap loc)))
 

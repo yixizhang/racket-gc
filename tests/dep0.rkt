@@ -1,6 +1,5 @@
 #lang plai/gc2/mutator
 (allocator-setup "collector.rkt" 512)
-
 (provide (all-defined-out))
 
 (define-struct s (x))

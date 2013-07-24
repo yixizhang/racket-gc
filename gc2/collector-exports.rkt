@@ -43,7 +43,9 @@
   vector-ref
   vector-set!
   alloc-struct
+  struct?
   alloc-struct-instance
+  struct-instance?
   struct-pred
   struct-select
   struct-set!)
