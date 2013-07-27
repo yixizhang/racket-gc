@@ -22,12 +22,16 @@
 (define (gc:first pr-ptr)
   (if (equal? (heap-ref pr-ptr) 'pair)
       (heap-ref (+ pr-ptr 1))
-      (error 'first "non pair @ ~s" pr-ptr)))
+      (error 'first "non pair @ ~s, got ~s" 
+             pr-ptr
+             (heap-ref pr-ptr))))
 
 (define (gc:rest pr-ptr)
   (if (equal? (heap-ref pr-ptr) 'pair)
       (heap-ref (+ pr-ptr 2))
-      (error 'rest "non pair @ ~s" pr-ptr)))
+      (error 'rest "non pair @ ~s, got ~s" 
+             pr-ptr
+             (heap-ref pr-ptr))))
 
 (define (gc:set-first! pr-ptr new)
   (if (equal? (heap-ref pr-ptr) 'pair)
@@ -339,28 +343,28 @@
     [else (error 'traverse/loc "crash ~s" loc)]))
 
 (define (check/free loc)
-  (define (helper loc)
+  (define (helper loc parent)
     (case (heap-ref loc)
       [(pair flat proc vector struct struct-instance) (void)]
-      [else (error 'check/free "expected tag @ ~s" loc)]))
+      [else (error 'check/free "wrong pointer from ~s to ~s" parent loc)]))
   (when (< loc (heap-size))
     (case (heap-ref loc)
       [(free) (check/free (+ loc 1))]
-      [(pair) (helper (heap-ref (+ loc 1)))
-              (helper (heap-ref (+ loc 2)))
+      [(pair) (helper (heap-ref (+ loc 1)) loc)
+              (helper (heap-ref (+ loc 2)) loc)
               (check/free (+ loc 3))]
       [(flat) (check/free (+ loc 2))]
       [(proc) (for ([dx (in-range (heap-ref (+ loc 2)))])
-                   (helper (heap-ref (+ loc 3 dx))))
+                   (helper (heap-ref (+ loc 3 dx)) loc))
               (check/free (+ loc 3 (heap-ref (+ loc 2))))]
       [(vector) (for ([dx (in-range (heap-ref (+ loc 1)))])
-                     (helper (heap-ref (+ loc 2 dx))))
+                     (helper (heap-ref (+ loc 2 dx)) loc))
                 (check/free (+ loc 2 (heap-ref (+ loc 1))))]
       [(struct) (if (heap-ref (+ loc 2))
-                    (helper (heap-ref (+ loc 2)))
+                    (helper (heap-ref (+ loc 2)) loc)
                     (void))
                 (check/free (+ loc 4))]
-      [(struct-instance) (helper (heap-ref (+ loc 1)))
+      [(struct-instance) (helper (heap-ref (+ loc 1)) loc)
                          (for ([dx (in-range (heap-ref (+ 3 (heap-ref (+ loc 1)))))])
-                              (helper (+ loc 2 dx)))
+                              (helper (heap-ref (+ loc 2 dx)) loc))
                          (check/free (+ loc 2 (heap-ref (+ 3 (heap-ref (+ loc 1))))))])))

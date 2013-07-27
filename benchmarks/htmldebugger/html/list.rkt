@@ -1,9 +1,17 @@
 #lang plai/gc2/mutator
 (allocator-setup "../../collector.rkt" 2048)
-(import-primitives
- reverse append)
 
 (provide (all-defined-out))
+;; append ;; list list -> list
+(define (append a b)
+  (cond [(null? a) b]
+        [else (cons (car a) (append (cdr a) b))]))
+;; reverse ;; list -> list
+(define (reverse l)
+  (reverse1 l empty))
+(define (reverse1 l a)
+  (cond [(null? l) a]
+        [else (reverse1 (cdr l) (cons (car l) a))]))
 ;; map : proc list -> list
 (define (map f l)
   (if (null? l)

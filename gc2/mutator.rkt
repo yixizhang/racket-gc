@@ -42,7 +42,9 @@
           (mutator-app #%app)
           (mutator-datum #%datum)
           (collector:cons cons)
+          (collector:first car)
           (collector:first first)
+          (collector:rest cdr)
           (collector:rest rest)
           
           (mutator-quote quote)
@@ -133,12 +135,12 @@
          ...))
 (define-syntax-rule (mutator-if test true false)
   (if (syntax-parameterize ([mutator-tail-call? #f])
-                           (collector:deref (->address test)))
+                           (gc->scheme (->address test)))
       (->address true)
       (->address false)))
 (define-syntax-rule (mutator-when test true)
   (if (syntax-parameterize ([mutator-tail-call? #f])
-                           (collector:deref (->address test)))
+                           (gc->scheme (->address test)))
       (->address true)
       (mutator-app void)))
 (define-syntax-rule (mutator-set! id e)
@@ -335,7 +337,8 @@
      (let* ([local-fields (syntax->list #'(x ...))]
             [fields (append (syntax-e #'parent-fields) local-fields)]
             [fields-num (length fields)]
-            [index-list (build-list fields-num values)])
+            [index-list (let* ([local-num (length local-fields)] [base (- fields-num local-num)])
+                          (build-list local-num (λ (x) (+ x base))))])
        (with-syntax ([struct:s (datum->syntax #'s (string->symbol
                                                    (format "struct:~a" (syntax-e #'s))))]
                      [make-s (datum->syntax #'s (string->symbol (format "make-~a" (syntax-e #'s))))]
@@ -612,11 +615,14 @@
 
 (provide (rename-out [mutator-sort sort]))
 (define/primitive (mutator-sort seq less?)
-  (do-alloc 
-   (map collector:deref
-        (sort (copy-gc-pair seq)
-              (lambda (a b)
-                (collector:deref ((deref-proc less?) a b)))))))
+  (local [(define (alloc l)
+            (cond
+              [(null? l) (collector:alloc-flat empty)]
+              [else (collector:cons (car l) (alloc (cdr l)))]))]
+    (alloc
+     (sort (copy-gc-pair seq)
+           (lambda (a b)
+             (collector:deref ((deref-proc less?) a b)))))))
 
 (provide (rename-out (mutator-make-vector make-vector)))
 (define (mutator-make-vector length loc)
@@ -672,8 +678,9 @@
   (cond
     [(and (collector:flat? l1)
           (collector:flat? l2))
-     (collector:alloc-flat (equal? (collector:deref l1)
-                                   (collector:deref l2)))]
+     (collector:alloc-flat
+      (equal? (collector:deref l1)
+              (collector:deref l2)))]
     [else (collector:alloc-flat (= l1 l2))]))
 
 (provide (rename-out [mutator-equal? equal?]))
@@ -748,7 +755,7 @@
                   [(pair? val) (mk-root (collector:cons (alloc (car val)) (alloc (cdr val))))]
                   [(vector? val) 
                    (let* ([vs (for/vector ([v (in-vector val)]) (alloc v))]
-                          [vec (mk-root (collector:vector (vector-length val) (alloc #f)))])
+                          [vec (mk-root (collector:vector (vector-length val) (collector:alloc-flat #f)))])
                      (for ([v (in-vector vs)] [i (in-naturals)])
                        (collector:vector-set! (read-root vec)
                                               i 
@@ -810,7 +817,9 @@
                                fp))))]
                  (placeholder-set! ph (mk-s (format "mutator:~a" (struct-symbol loc)) (struct-fvals loc))))]
               [else 
-               (error (format "gc:flat?, gc:cons?, gc:closure?, gc:vector? gc:struct-instance? all returned false for ~a" loc))])
+               (error (format (string-append "gc:flat?, gc:cons?, gc:closure?, gc:vector? gc:struct-instance? "
+                                             "all returned false for value ~a @ ~a")
+                              (heap-ref loc) loc))])
             (placeholder-get ph)))))
   (make-reader-graph (unwrap loc)))
 

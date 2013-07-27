@@ -29,32 +29,34 @@
   ;; clean-up-pcdata : (listof Content) -> (listof Content)
   (begin
     (set! local-clean-up-pcdata
-      (lambda (content)
-        (map (lambda (to-fix)
-               (cond
-                 [(element? to-fix)
-                  (recontent-xml to-fix
-                                 (let ([possible (may-contain (element-name to-fix))]
-                                       [content (element-content to-fix)])
-                                   (if (or (not possible) (memq 'pcdata possible))
-                                     (local-clean-up-pcdata content)
-                                     (local-eliminate-pcdata content))))]
-                 [else to-fix]))
-             content)))
+          (lambda (content)
+            (map (lambda (to-fix)
+                   (cond
+                     [(element? to-fix)
+                      (recontent-xml to-fix
+                                     (let ([possible (may-contain (element-name to-fix))]
+                                           [content (element-content to-fix)])
+                                       (if (or (not possible) (memq 'pcdata possible))
+                                           (local-clean-up-pcdata content)
+                                           (local-eliminate-pcdata content))))]
+                     [else to-fix]))
+                 content)))
     (set! local-eliminate-pcdata
-      ;: (listof Content) -> (listof Content)
-      (lambda (content)
-        (let ([non-elements (first-non-elements content)]
-              [more (memf element? content)])
-          (if more
-            (let ([el (first more)])
-              (let ([possible (may-contain (element-name el))])
-                (if (or (not possible) (memq 'pcdata possible))
-                  (cons (recontent-xml el (append non-elements (local-clean-up-pcdata (element-content el)) (local-eliminate-pcdata (first-non-elements (rest more)))))
-                        (or (memf element? (rest more)) empty))
-                  (cons (recontent-xml el (local-eliminate-pcdata (element-content el)))
-                        (local-eliminate-pcdata (rest more))))))
-            empty))))
+          ;: (listof Content) -> (listof Content)
+          (lambda (content)
+            (let ([non-elements (first-non-elements content)]
+                  [more (memf element? content)])
+              (if more
+                  (let ([el (first more)])
+                    (let ([possible (may-contain (element-name el))])
+                      (if (or (not possible) (memq 'pcdata possible))
+                          (cons (recontent-xml el (append non-elements 
+                                                          (append (local-clean-up-pcdata (element-content el))
+                                                                  (local-eliminate-pcdata (first-non-elements (rest more))))))
+                                (or (memf element? (rest more)) empty))
+                          (cons (recontent-xml el (local-eliminate-pcdata (element-content el)))
+                                (local-eliminate-pcdata (rest more))))))
+                  empty))))
     local-clean-up-pcdata))
 
 ;; first-non-elements : (listof Content) -> (listof Content)
