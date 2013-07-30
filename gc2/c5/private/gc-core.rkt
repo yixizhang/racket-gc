@@ -1,6 +1,11 @@
-#lang scheme
+#lang racket/base
 (require
- (for-syntax scheme))
+ racket/bool
+ racket/contract
+ racket/list
+ racket/class
+ (for-syntax racket/base
+             racket/bool))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Locations
@@ -53,7 +58,7 @@
 ;;; conceptually occupy a small, fixed amount of space.
 (provide/contract [heap-value? (any/c . -> . boolean?)])
 (define (heap-value? v)
-  (or (number? v) (symbol? v) (char? v) (string? v) (bytes? v) (eof-object? v) (regexp? v) (byte-regexp? v) (boolean? v) (void? v) (empty? v) (closure-code? v) (input-port? v) (output-port? v)))
+  (or (number? v) (symbol? v) (boolean? v) (empty? v) (closure-code? v)))
 
 (provide location?)
 (define (location? v)
@@ -61,18 +66,9 @@
       (and (exact-nonnegative-integer? v) (< v (vector-length (current-heap))))
       (error "Heap is uninitialized")))
 
-(provide/contract (init-heap! (exact-nonnegative-integer? (-> void?) . -> . void?)))
-(define (init-heap! size init-allocator)
-  (define already-set-heap (current-heap))
-  (cond
-    [already-set-heap
-     (unless (= (vector-length already-set-heap) size)
-       (error 'init-heap! "tried to re-create the heap with a different size; old ~s new ~s"
-              (vector-length already-set-heap)
-              size))]
-    [else
-     (current-heap (build-vector size (λ (ix) false)))
-     (init-allocator)]))
+(provide/contract (init-heap! (exact-nonnegative-integer? . -> . void?)))
+(define (init-heap! size)
+  (current-heap (build-vector size (λ (ix) false))))
 
 (provide/contract (heap-set! (location? heap-value? . -> . void?)))
 (define (heap-set! location value)
@@ -110,7 +106,7 @@
     [(_ id) (identifier? #'id)
             #`(make-root 'id
                          (λ () 
-                           id)
+                            id)
                          (λ (loc) (set! id loc)))]))
 
 ;;; Roots on the stack.
@@ -127,7 +123,7 @@
 (define (make-stack-root id location)
   (make-root id
              (λ () 
-               location)
+                location)
              (λ (new-location) (set! location new-location))))
 
 (provide/contract (read-root (root? . -> . location?)))
@@ -148,73 +144,55 @@
 (define (add-global-root! root)
   (set! global-roots (cons root global-roots)))
 
-(define active-roots empty)
-
-(provide/contract (add-active-root! (root? . -> . void?)))
-(define (add-active-root! root)
-  (set! active-roots (cons root active-roots)))
-
-(provide/contract (add-active-roots! ((listof root?) . -> . void?)))
-(define (add-active-roots! roots)
-  (set! active-roots (append roots active-roots)))
-
-(provide/contract (get-active-roots (-> (listof root?))))
-(define (get-active-roots)
-  (filter is-mutable-root? active-roots))
-
-(provide/contract (remove-active-root! (root? . -> . void?)))
-(define (remove-active-root! root)
-  (set! active-roots (remove root active-roots)))
-
-(provide/contract (remove-active-roots! ((listof root?) . -> . void?)))
-(define (remove-active-roots! roots)
-  (set! active-roots
-        (let loop ([l roots] [result active-roots])
-          (if (null? l)
-              result
-              (loop (cdr l) (remove (car l) result))))))
-
-(provide/contract (clear-active-roots! (-> void?)))
-(define (clear-active-roots!)
-  (set! active-roots empty))
-
 (provide get-root-set)
-(define-syntax (get-root-set stx)
+(define (get-root-set) (append (active-roots) (user-specified-roots)))
+
+(provide compute-current-roots)
+(define (compute-current-roots) (append (get-global-roots) (stack-roots)))
+
+(provide active-roots)
+(define active-roots (make-parameter '()))
+
+(provide with-roots)
+(define-syntax (with-roots stx)
   (syntax-case stx ()
-    [(_ root-id ...)
-     (andmap identifier? (syntax->list #'(root-id ...)))
-     #`(begin
-         (append
-          (list (if (location? root-id)
-                    (make-root 'root-id 
-                               (λ ()
-                                 root-id) 
-                               (λ (loc) 
-                                 (set! root-id loc)))
-                    (error 'get-root-set "expected a location, given ~e" root-id))
-                ...)
-          (get-global-roots)
-          (get-active-roots)
-          (stack-roots)))]
-    [(_ e ...)
-     (let ([err (ormap (λ (x) (and (not (identifier? x)) x)) (syntax->list #'(e ...)))])
-       (raise-syntax-error false
-                           "expected an identifier to treat as a root"
-                           stx
-                           err))]
-    [_ (raise-syntax-error false
-                           "missing open parenthesis"
-                           stx)]))
+    [(_ (x ...) e2 e3 ...)
+     (begin
+       (for ([x (in-list (syntax->list #'(x ...)))])
+         (unless (identifier? #'x)
+           (raise-syntax-error 'with-roots "expected an identifier" stx x)))
+       #'(with-roots/proc 
+          (list (λ () x) ...)
+          (list (λ (v) (set! x v)) ...)
+          (λ () e2 e3 ...)))]))
+
+(define (with-roots/proc getters setters thunk)
+  (define c (listof location?))
+  (for ([getter (in-list getters)])
+    (define rt (getter))
+    (unless (location? rt)
+      (raise-argument-error 'with-roots
+                            'location?
+                            rt)))
+  (parameterize ([user-specified-roots 
+                  (append
+                   (map (λ (x y) (make-root 'user-specified x y))
+                        getters 
+                        setters)
+                   (user-specified-roots))])
+    (thunk)))
+
+(define user-specified-roots (make-parameter '()))
 
 (provide/contract
  [vector->roots (-> (vectorof location?) (listof root?))])
 (define (vector->roots v)
   (for/list ([e (in-vector v)]
              [i (in-naturals)])
-    (make-root 'vector
-               (λ () 
-                 (vector-ref v i))
-               (λ (ne) (vector-set! v i ne)))))
+            (make-root 'vector
+                       (λ () 
+                          (vector-ref v i))
+                       (λ (ne) (vector-set! v i ne)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Environments of closures
@@ -229,7 +207,6 @@
 
 (provide set-ui!)
 (define (set-ui! ui%)
-  (unless gui
-    (set! gui (new ui% [heap-vec (current-heap)]))))
+  (set! gui (new ui% [heap-vec (current-heap)])))
 
 (define gui false)

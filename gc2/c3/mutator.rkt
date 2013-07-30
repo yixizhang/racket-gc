@@ -550,9 +550,9 @@
                     (let ([locals (map (λ (x)
                                          (make-env-root x))
                                        (filter location? args))])
-                      (add-active-roots! locals)
+                      (add-extra-roots! locals)
                       (define loc (do-alloc result))
-                      (remove-active-roots! locals)
+                      (remove-extra-roots! locals)
                       loc)]
                    [else 
                     (error 'id (string-append "imported primitive must return <heap-value?>, "
@@ -595,9 +595,9 @@
      (with-syntax ([(tmp ...) (generate-temporaries (syntax->list #'(x ...)))])
        #`(define (f x ...)
            (let ([tmp (make-env-root x)] ...)
-             (add-active-roots! (list tmp ...))
+             (add-extra-roots! (list tmp ...))
              (define loc expr)
-             (remove-active-roots! (list tmp ...))
+             (remove-extra-roots! (list tmp ...))
              loc)))]))
 
 (provide-flat-prims/lift
@@ -747,7 +747,7 @@
   (define local-roots empty)
   (local [(define (mk-root loc)
             (define r (make-env-root loc))
-            (add-active-root! r)
+            (add-extra-root! r)
             (set! local-roots (cons r local-roots))
             r)
           (define (alloc val)
@@ -763,7 +763,7 @@
                      vec)]
                   [else (error 'do-alloc "expected flat, pair or vector values, but get ~s" val)]))]
     (let ([result (alloc value)])
-                  (remove-active-roots! local-roots)
+                  (remove-extra-roots! local-roots)
                   (read-root result))))
 
 (define (gc->scheme loc)
@@ -818,7 +818,7 @@
                  (placeholder-set! ph (mk-s (format "mutator:~a" (struct-symbol loc)) (struct-fvals loc))))]
               [else 
                (error (format (string-append "gc:flat?, gc:cons?, gc:closure?, gc:vector? gc:struct-instance? "
-                                             "all returned false for value ~a @ ~a")
+                                             "all returned false for value ~s @ ~s")
                               (heap-ref loc) loc))])
             (placeholder-get ph)))))
   (make-reader-graph (unwrap loc)))
