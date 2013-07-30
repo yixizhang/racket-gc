@@ -68,7 +68,7 @@
 (define (1st-gen-size)
   (round (* (heap-size) 1/4)))
 (define (2nd-gen-size)
-  (round (* (heap-size) 7/8)))
+  (round (* (heap-size) 31/32)))
 
 ;; gc:deref : loc -> heap-value
 ;; must signal an error if fl-loc doesn't point to a flat value
@@ -84,10 +84,13 @@
 ;; if loc points to a flat or pair or proc, then return loc
 ;; else if loc points to a frwd, return the frwd address
 (define (track/loc loc)
-  (case (heap-ref/bm loc)
-    [(flat pair proc vector struct struct-instance) loc]
-    [(frwd) (heap-ref/bm (+ loc 1))]
-    [else (error 'track/loc "wrong tag ~s at ~a" (heap-ref/bm loc) loc)]))
+  (define l (->location loc))
+  (case (heap-ref/bm l)
+    [(flat pair proc vector struct struct-instance) l]
+    [(frwd) (heap-ref/bm (+ l 1))]
+    [else (error 'track/loc "wrong tag ~s at ~a" 
+                 (heap-ref/bm l) 
+                 l)]))
 
 ;; gc:alloc-flat : heap-value -> loc
 (define (gc:alloc-flat fv)
@@ -180,21 +183,21 @@
 ;; allocates a closure with 'code-ptr' and the free variables
 ;; in the vector 'free-vars'.
 (define (gc:closure code-ptr free-vars)
-  (define fv-count (vector-length free-vars))
-  (define fv-vars (vector->roots free-vars))
+  (define fv-count (length free-vars))
   (define next (alloc (+ fv-count 3)
-                      fv-vars
+                      free-vars
                       '()))
-  (define updated-free-vars (for/vector ([v (in-vector free-vars)])
-                      (track/loc v)))
+  (define updated-free-vars 
+    (for/vector ([v (in-list free-vars)])
+                (track/loc (read-root v))))
   (when (and (= next 2)
-             (need-forwarding-pointers? fv-vars))
+             (need-forwarding-pointers? free-vars))
     (free-1st-gen))
-  (heap-set!/bm next 'proc)
-  (heap-set!/bm (+ next 1) code-ptr)
-  (heap-set!/bm (+ next 2) fv-count)
+  (heap-set! next 'proc)
+  (heap-set! (+ next 1) code-ptr)
+  (heap-set! (+ next 2) fv-count)
   (for ([x (in-range 0 fv-count)])
-    (heap-set!/bm (+ next 3 x)
+    (heap-set! (+ next 3 x)
                (vector-ref updated-free-vars x)))
   next)
 

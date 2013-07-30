@@ -58,7 +58,7 @@
 ;;; conceptually occupy a small, fixed amount of space.
 (provide/contract [heap-value? (any/c . -> . boolean?)])
 (define (heap-value? v)
-  (or (number? v) (symbol? v) (boolean? v) (empty? v) (closure-code? v)))
+  (or (number? v) (symbol? v) (char? v) (string? v) (bytes? v) (eof-object? v) (regexp? v) (byte-regexp? v) (boolean? v) (void? v) (empty? v) (closure-code? v) (input-port? v) (output-port? v)))
 
 (provide location?)
 (define (location? v)
@@ -66,9 +66,18 @@
       (and (exact-nonnegative-integer? v) (< v (vector-length (current-heap))))
       (error "Heap is uninitialized")))
 
-(provide/contract (init-heap! (exact-nonnegative-integer? . -> . void?)))
-(define (init-heap! size)
-  (current-heap (build-vector size (λ (ix) false))))
+(provide/contract (init-heap! (exact-nonnegative-integer? (-> void?) . -> . void?)))
+(define (init-heap! size init-allocator)
+  (define already-set-heap (current-heap))
+  (cond
+    [already-set-heap
+     (unless (= (vector-length already-set-heap) size)
+       (error 'init-heap! "tried to re-create the heap with a different size; old ~s new ~s"
+              (vector-length already-set-heap)
+              size))]
+    [else
+     (current-heap (build-vector size (λ (ix) false)))
+     (init-allocator)]))
 
 (provide/contract (heap-set! (location? heap-value? . -> . void?)))
 (define (heap-set! location value)
@@ -106,7 +115,7 @@
     [(_ id) (identifier? #'id)
             #`(make-root 'id
                          (λ () 
-                            id)
+                           id)
                          (λ (loc) (set! id loc)))]))
 
 ;;; Roots on the stack.
@@ -123,7 +132,7 @@
 (define (make-stack-root id location)
   (make-root id
              (λ () 
-                location)
+               location)
              (λ (new-location) (set! location new-location))))
 
 (provide/contract (read-root (root? . -> . location?)))
@@ -145,13 +154,31 @@
   (set! global-roots (cons root global-roots)))
 
 (provide get-root-set)
-(define (get-root-set) (append (active-roots) (user-specified-roots)))
+(define (get-root-set) (append (active-roots) (get-extra-roots) (user-specified-roots)))
 
 (provide compute-current-roots)
-(define (compute-current-roots) (append (get-global-roots) (stack-roots)))
+(define (compute-current-roots) (append (get-global-roots) (get-extra-roots) (stack-roots)))
 
 (provide active-roots)
 (define active-roots (make-parameter '()))
+
+(define extra-roots empty)
+
+(provide/contract (add-extra-root! (root? . -> . void?)))
+(define (add-extra-root! root)
+  (set! extra-roots (cons root extra-roots)))
+
+(provide/contract (get-extra-roots (-> (listof root?))))
+(define (get-extra-roots)
+  (filter is-mutable-root? extra-roots))
+
+(provide/contract (remove-extra-root! (root? . -> . void?)))
+(define (remove-extra-root! root)
+  (set! extra-roots (remove root extra-roots)))
+
+(provide/contract (clear-extra-roots! (-> void?)))
+(define (clear-extra-roots!)
+  (set! extra-roots empty))
 
 (provide with-roots)
 (define-syntax (with-roots stx)
@@ -189,10 +216,10 @@
 (define (vector->roots v)
   (for/list ([e (in-vector v)]
              [i (in-naturals)])
-            (make-root 'vector
-                       (λ () 
-                          (vector-ref v i))
-                       (λ (ne) (vector-set! v i ne)))))
+    (make-root 'vector
+               (λ () 
+                 (vector-ref v i))
+               (λ (ne) (vector-set! v i ne)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Environments of closures
@@ -207,6 +234,7 @@
 
 (provide set-ui!)
 (define (set-ui! ui%)
-  (set! gui (new ui% [heap-vec (current-heap)])))
+  (unless gui
+    (set! gui (new ui% [heap-vec (current-heap)]))))
 
 (define gui false)

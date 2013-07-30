@@ -45,8 +45,6 @@
 
 ;; read-functions
 (define lex-comment-contents (gen-read-until-string "-->"))
-(define lex-pi-data (gen-read-until-string "?>"))
-(define lex-cdata-contents (gen-read-until-string "]]>"))
 
 ;; test
 (define (reverse l)

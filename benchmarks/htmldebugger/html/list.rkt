@@ -1,17 +1,21 @@
 #lang plai/gc2/mutator
 (allocator-setup "../../collector.rkt" 2048)
+(import-primitives
+ not)
 
-(provide (all-defined-out))
-;; append ;; list list -> list
-(define (append a b)
-  (cond [(null? a) b]
-        [else (cons (car a) (append (cdr a) b))]))
-;; reverse ;; list -> list
-(define (reverse l)
-  (reverse1 l empty))
-(define (reverse1 l a)
-  (cond [(null? l) a]
-        [else (reverse1 (cdr l) (cons (car l) a))]))
+(provide reverse append map filter foldr memq memf for-each sort)
+
+;; reverse : list -> list
+(define (reverse l) (reverse1 empty l))
+(define (reverse1 a l)
+  (if (null? l)
+      a
+      (reverse1 (cons (first l) a) (rest l))))
+;; append : list list -> list
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (first x) (append (rest x) y))))
 ;; map : proc list -> list
 (define (map f l)
   (if (null? l)
@@ -44,3 +48,11 @@
       (void)
       (begin (f (first l))
              (for-each f (rest l)))))
+;; sort: list proc -> list
+(define (sort l less?)
+  (let ([f (lambda (x) (less? x (car l)))])
+    (if (null? l)
+        l
+        (append (sort (filter f (cdr l)) less?)
+                (cons (car l) empty)
+                (sort (filter (lambda (x) (not (f x))) (cdr l)) less?)))))

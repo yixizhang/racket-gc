@@ -17,9 +17,8 @@
                   (append! (vector-ref vec index) (cons kv empty)))]
     [else
      (let ([a-kv (first lst)])
-       (if (equal? (kv-key a-kv) key)
-           (set-first! lst kv)
-           (set/append-it! (rest lst) vec index key kv)))]))
+       (cond [(equal? (kv-key a-kv) key) (begin (set-first! lst kv) (void))]
+             [else (set/append-it! (rest lst) vec index key kv)]))]))
 (define (hash-set! hash key value)
   (let* ([i (equal-hash-code key)]
          [vec (hash-table-vec hash)]

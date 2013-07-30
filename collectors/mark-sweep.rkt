@@ -83,16 +83,16 @@
     ptr))
 
 (define (gc:closure code-ptr free-vars)
-  (define fv-count (vector-length free-vars))
+  (define fv-count (length free-vars))
   (define next (alloc (+ fv-count 3)
-                      (vector->roots free-vars)
+                      free-vars
                       '()))
   (heap-set! next 'proc)
   (heap-set! (+ next 1) code-ptr)
   (heap-set! (+ next 2) fv-count)
   (for ([x (in-range 0 fv-count)])
     (heap-set! (+ next 3 x)
-               (vector-ref free-vars x)))
+               (read-root (list-ref free-vars x))))
   next)
 
 ;; vector related
@@ -101,7 +101,7 @@
   (heap-set! next 'vector)
   (heap-set! (+ next 1) length)
   (for ([i (in-range length)])
-    (heap-set! (+ next 2 i) loc))
+    (heap-set! (+ next 2 i) (read-root loc)))
   next)
 
 (define (gc:vector? loc)

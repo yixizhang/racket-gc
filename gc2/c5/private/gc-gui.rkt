@@ -103,11 +103,22 @@
       (cond
         [(boolean? obj) (if obj "#t" "#f")]
         [(number? obj) (format "~a" obj)]
+        [(string? obj) (format "~s" obj)]
+        [(bytes? obj) (format "~s" obj)]
+        [(eof-object? obj) (format "~s" obj)]
+        [(byte-regexp? obj) (format "~s" obj)]
+        [(regexp? obj) (format "~s" obj)]
+        [(void? obj) (format "~s" obj)]
+        [(char? obj) (format "~s" obj)]
         [(closure-code? obj)
          (format "~a" (or (object-name (closure-code-proc obj)) "#<closure>"))]
         [(symbol? obj) (format "'~s" obj)]
+        [(or (input-port? obj)
+             (output-port? obj)
+             (port? obj))
+         (format "~s" obj)]
         [(null? obj) "empty"]
-        [else (error 'val->string "unknown object, expected a heap-value.")]))
+        [else (error 'val->string "unknown object ~s, expected a heap-value." obj)]))
     
     (define/override (on-paint)
       (unless offscreen (redraw-offscreen))

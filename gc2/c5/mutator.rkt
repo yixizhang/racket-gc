@@ -8,18 +8,21 @@
          (only-in plai/test-harness
                   exn:plai? equal~?
                   plai-error generic-test test halt-on-errors print-only-errors)
+         (only-in racket/base
+                  struct)
          (for-syntax scheme)
          (for-syntax plai/gc2/private/gc-transformer)
          scheme/stxparam
          (for-syntax scheme/stxparam-exptime))
 
-(provide else require provide #%top
+(provide else require provide #%top all-defined-out all-from-out
          values
          test/location=? 
          test/value=?
          (rename-out
           [plai-error error]
           
+          [mutator-void void]
           [mutator-and and]
           [mutator-or or]
           [mutator-cond cond]
@@ -31,6 +34,7 @@
           [mutator-begin begin]
           
           [mutator-if if]
+          [mutator-when when]
           [mutator-let-values let-values]
           [mutator-set! set!]
           [mutator-lambda lambda]
@@ -38,21 +42,27 @@
           (mutator-app #%app)
           (mutator-datum #%datum)
           (mutator-cons cons)
+          (collector:first car)
           (collector:first first)
+          (collector:rest cdr)
           (collector:rest rest)
+          
           (mutator-quote quote)
           (mutator-top-interaction #%top-interaction)
-          (mutator-module-begin #%module-begin)))
+          (mutator-module-begin #%module-begin)
+          (mutator-define-struct define-struct)))
 
 (define-syntax-parameter mutator-name #f)
 (define-syntax-parameter mutator-tail-call? #t)
 (define-syntax-parameter mutator-env-roots empty)
 
+; Sugar Macros
 (define-syntax-parameter mutator-assignment-allowed? #t)
 (define-syntax-rule (no! e) (syntax-parameterize ([mutator-assignment-allowed? #f]) e))
 (define-syntax-rule (yes! e) (syntax-parameterize ([mutator-assignment-allowed? #t]) e))
 
-; Sugar Macros
+(define (mutator-void)
+  (do-alloc-flat (void)))
 (define-syntax mutator-and
   (syntax-rules ()
     [(_) (mutator-quote #t)]
@@ -121,7 +131,10 @@
 
 (define mutator-cons
   (let ([cons 
-         (λ (hd tl)
+         (λ (head tail)
+           (define-values (hd tl)
+             (values (if (root? head) (read-root head) head)
+                     (if (root? tail) (read-root tail) tail)))
            (define roots (compute-current-roots))
            (define-values (hd-roots no-hd-roots)
              (partition (λ (x) (= hd (read-root x))) roots))
@@ -155,9 +168,14 @@
          ...))
 (define-syntax-rule (mutator-if test true false)
   (if (syntax-parameterize ([mutator-tail-call? #f])
-                           (collector:deref (no! test)))
+                           (gc->scheme (no! test)))
       true
       false))
+(define-syntax-rule (mutator-when test true)
+  (if (syntax-parameterize ([mutator-tail-call? #f])
+                           (gc->scheme (no! test)))
+      true
+      (mutator-app void)))
 (define-syntax (mutator-set! stx)
   (syntax-case stx ()
     [(_ id e)
@@ -272,7 +290,7 @@
                                   (set! this-loc v)
                                   (this-setter v)
                                   (for ([root (in-list this-other-roots)])
-                                    (set-root! v))))
+                                    (set-root! root v))))
                      closure-roots))])))
   (parameterize ([active-roots remaining-roots])
     (collector:closure closure closure-roots)))
@@ -332,7 +350,7 @@
      (quasisyntax/loc stx (mutator-anf-app do-alloc-flat (#%datum . e)))]))
 
 (define-syntax (mutator-top-interaction stx)
-  (syntax-case stx (require provide mutator-define mutator-define-values test/value=? import-primitives)
+  (syntax-case stx (require provide mutator-define mutator-define-values test/value=? import-primitives mutator-define-struct)
     [(_ . (require . e))
      (syntax/loc stx
        (require . e))]
@@ -345,6 +363,9 @@
     [(_ . (mutator-define-values . e))
      (syntax/loc stx
        (mutator-define-values . e))]
+    [(_ . (mutator-define-struct . e))
+     (syntax/loc stx
+       (mutator-define-struct . e))]
     [(_ . (test/value=? . e))
      (syntax/loc stx
        (test/value=? . e))]
@@ -399,7 +420,154 @@
               result]
              [(location? result)
               (gc->scheme result)]))))
-             
+
+(define mutator-struct
+  (let ([struct
+         (lambda (sym p num)
+           (define parent
+             (if (and p (root? p)) (read-root p) p))
+           (define roots (compute-current-roots))
+           (define-values (parent-roots no-parent-roots)
+             (partition (lambda (x) (= (read-root x) parent)) roots))
+           (parameterize ([active-roots no-parent-roots])
+             (collector:alloc-struct sym
+                                     (if parent
+                                         (make-root 'parent
+                                                    (lambda () parent)
+                                                    (lambda (v)
+                                                      (set! parent v)
+                                                      (for ([r (in-list parent-roots)])
+                                                        (set-root! r v))))
+                                         #f)
+                                     num)))])
+    struct))
+
+(define do-make-struct
+  (let ([make-struct
+         (lambda (type fs)
+           (define s (if (root? type) (read-root type) type))
+           (define fields
+             (map (lambda (x)
+                    (if (root? x) (read-root x) x))
+                  fs))
+           (define roots (compute-current-roots))
+           (define-values (sroots no-sroots)
+             (partition (lambda (x) (= (read-root x) s)) roots))
+           (define-values (remaining-roots fields-roots)
+             (let loop ([fields fields] 
+                        [remaining-roots no-sroots] 
+                        [fields-roots '()])
+               (cond
+                 [(null? fields) (values remaining-roots fields-roots)]
+                 [else
+                  (define this-loc (car fields))
+                  (define-values (this-other-roots leftovers)
+                    (partition (lambda (x) (= (read-root x) this-loc)) remaining-roots))
+                  (loop (cdr fields)
+                        leftovers
+                        (cons (make-root 'field-root
+                                         (lambda () this-loc)
+                                         (lambda (v)
+                                           (set! this-loc v)
+                                           (for ([r (in-list this-other-roots)])
+                                             (set-root! r v))))
+                              fields-roots))])))
+           (parameterize ([active-roots remaining-roots])
+             (collector:alloc-struct-instance (make-root 'struct-root
+                                                         (lambda () s)
+                                                         (lambda (v)
+                                                           (set! s v)
+                                                           (for ([r (in-list sroots)])
+                                                             (set-root! r v))))
+                                              fields-roots)))])
+    make-struct))
+
+;; define-struct : number symbol (listof symbol) -> mutator-define functions ...
+(define-syntax (define-struct/offset stx)
+  (syntax-case stx ()
+    [(_ parent-fields parent-struct s (x ...))
+     (let* ([local-fields (syntax->list #'(x ...))]
+            [fields (append (syntax-e #'parent-fields) local-fields)]
+            [fields-num (length fields)]
+            [index-list (let* ([local-num (length local-fields)] [base (- fields-num local-num)])
+                          (build-list local-num (λ (x) (+ x base))))])
+       (with-syntax ([struct:s (datum->syntax #'s (string->symbol
+                                                   (format "struct:~a" (syntax-e #'s))))]
+                     [make-s (datum->syntax #'s (string->symbol (format "make-~a" (syntax-e #'s))))]
+                     [s? (datum->syntax #'s (string->symbol (format "~a?" (syntax-e #'s))))]
+                     [(s-f ...) (map (lambda (x)
+                                       (datum->syntax #'s
+                                                      (string->symbol (format "~a-~a"
+                                                                              (syntax-e #'s)
+                                                                              (syntax-e x)))))
+                                     local-fields)]
+                     [(set-s-f! ...) (map (lambda (x)
+                                            (datum->syntax #'s
+                                                           (string->symbol (format "set-~a-~s!"
+                                                                                   (syntax-e #'s)
+                                                                                   (syntax-e x)))))
+                                          local-fields)])
+         #`(begin
+             (mutator-define struct:s 
+                             (mutator-struct 's parent-struct #,fields-num))
+             (define (make-s #,@fields)
+               (do-make-struct struct:s (list #,@fields)))
+             (define (s? a)
+               (do-alloc-flat (collector:struct-pred struct:s a)))
+             #,@(for/list ([i index-list]
+                           [f (in-list (syntax->list #'(s-f ...)))])
+                  #`(define (#,f a)
+                      (collector:struct-select struct:s a #,i)))
+             #,@(for/list ([i index-list]
+                           [f (in-list (syntax->list #'(set-s-f! ...)))])
+                  #`(define (#,f a value)
+                      (collector:struct-set! struct:s a #,i value))))))]))
+(begin-for-syntax
+  (define-struct define-struct-info (fields) #:prefab))
+;; struct constructors
+(define sc (make-hash))
+(define-syntax (mk-s-macro stx)
+  (syntax-case stx ()
+    [(_ s (x ...) sc)
+     #`(begin
+         (struct s (x ...))
+         (hash-set! sc (format "~a" s) s))]
+    [(_ s t (x ...) sc)
+     #`(begin
+         (struct s t (x ...))
+         (hash-set! sc (format "~a" s) s))]))
+(define-syntax (mutator-define-struct stx)
+  (syntax-case stx ()
+    [(_ s (f ...))
+     (identifier? #'s)
+     (begin
+       (for ([x (in-list (syntax->list #'(f ...)))])
+         (unless (identifier? x)
+           (raise-syntax-error 'define-struct "expected an identifier" stx x)))
+       (with-syntax ([local-s (datum->syntax #'s (string->symbol (format "mutator:~a" (syntax-e #'s))))])
+         #`(begin
+             (mk-s-macro local-s (f ...) sc)
+             (define-syntax s #,(make-define-struct-info (syntax->list #'(f ...))))
+             (define-struct/offset #,(datum->syntax #f '()) #f s (f ...)))))]
+    [(_ (s t) (f ...))
+     (begin
+       (unless (identifier? #'s)
+         (raise-syntax-error 'define-struct "expected an identifier" stx #'s))
+       (unless (and (identifier? #'t)
+                    (define-struct-info? (syntax-local-value #'t (λ () #f))))
+         (raise-syntax-error 'define-struct "expected an identifier from an earlier define-struct" stx #'t))
+       (for ([x (in-list (syntax->list #'(f ...)))])
+         (unless (identifier? x)
+           (raise-syntax-error 'define-struct "expected an identifier" stx x)))
+       (let ([parent-fields (define-struct-info-fields (syntax-local-value #'t))]
+             [parent-struct (datum->syntax #'t (string->symbol
+                                                (format "struct:~a" (syntax-e #'t))))])
+         (with-syntax ([local-s (datum->syntax #'s (string->symbol (format "mutator:~a" (syntax-e #'s))))]
+                       [local-t (datum->syntax #'t (string->symbol (format "mutator:~a" (syntax-e #'t))))])
+           #`(begin
+               (mk-s-macro local-s local-t (f ...) sc)
+               (define-syntax s #,(make-define-struct-info (append parent-fields (syntax->list #'(f ...)))))
+               (define-struct/offset #,parent-fields #,parent-struct s (f ...))))))]))
 
 ; Module Begin
 (define-for-syntax (allocator-setup-internal stx)
@@ -411,7 +579,12 @@
                                           gc:closure gc:closure? gc:closure-code-ptr gc:closure-env-ref
                                           gc:first gc:rest 
                                           gc:flat? gc:cons?
-                                          gc:set-first! gc:set-rest!))]) 
+                                          gc:set-first! gc:set-rest!
+                                          gc:vector gc:vector? 
+                                          gc:vector-length gc:vector-ref gc:vector-set!
+                                          gc:alloc-struct gc:struct? 
+                                          gc:alloc-struct-instance gc:struct-instance?
+                                          gc:struct-pred gc:struct-select gc:struct-set!))])
        #`(begin
            #,(if (alternate-collector)
                  #`(require #,(datum->syntax #'collector-module (alternate-collector)))
@@ -429,27 +602,43 @@
                               gc:first gc:rest 
                               gc:flat? gc:cons?
                               gc:set-first! gc:set-rest!
+                              gc:vector gc:vector? 
+                              gc:vector-length gc:vector-ref gc:vector-set!
+                              gc:alloc-struct gc:struct? 
+                              gc:alloc-struct-instance gc:struct-instance?
+                              gc:struct-pred gc:struct-select gc:struct-set!
                               heap-size)
-  (set-collector:deref! gc:deref)
-  (set-collector:alloc-flat! gc:alloc-flat)
-  (set-collector:cons! gc:cons)
-  (set-collector:first! gc:first)
-  (set-collector:rest! gc:rest)
-  (set-collector:flat?! gc:flat?)
-  (set-collector:cons?! gc:cons?)
-  (set-collector:set-first!! gc:set-first!)
-  (set-collector:set-rest!! gc:set-rest!)
-  (set-collector:closure! gc:closure)
-  (set-collector:closure?! gc:closure?)
-  (set-collector:closure-code-ptr! gc:closure-code-ptr)
-  (set-collector:closure-env-ref! gc:closure-env-ref)
+  (set-collector:deref! 'collector-module gc:deref)
+  (set-collector:alloc-flat! 'collector-module gc:alloc-flat)
+  (set-collector:cons! 'collector-module gc:cons)
+  (set-collector:first! 'collector-module gc:first)
+  (set-collector:rest! 'collector-module gc:rest)
+  (set-collector:flat?! 'collector-module gc:flat?)
+  (set-collector:cons?! 'collector-module gc:cons?)
+  (set-collector:set-first!! 'collector-module gc:set-first!)
+  (set-collector:set-rest!! 'collector-module gc:set-rest!)
+  (set-collector:closure! 'collector-module gc:closure)
+  (set-collector:closure?! 'collector-module gc:closure?)
+  (set-collector:closure-code-ptr! 'collector-module gc:closure-code-ptr)
+  (set-collector:closure-env-ref! 'collector-module gc:closure-env-ref)
+  (set-collector:vector! 'collector-module gc:vector)
+  (set-collector:vector?! 'collector-module gc:vector?)
+  (set-collector:vector-length! 'collector-module gc:vector-length)
+  (set-collector:vector-ref! 'collector-module gc:vector-ref)
+  (set-collector:vector-set!! 'collector-module gc:vector-set!)
+  (set-collector:alloc-struct! 'collector-module gc:alloc-struct)
+  (set-collector:struct?! 'collector-module gc:struct?)
+  (set-collector:alloc-struct-instance! 'collector-module gc:alloc-struct-instance)
+  (set-collector:struct-instance?! 'collector-module gc:struct-instance?)
+  (set-collector:struct-pred! 'collector-module gc:struct-pred)
+  (set-collector:struct-select! 'collector-module gc:struct-select)
+  (set-collector:struct-set!! 'collector-module gc:struct-set!)
   
-  (init-heap! heap-size)
+  (init-heap! heap-size init-allocator)
   (when (gui-available?) 
-    (if (<= heap-size 500)
+    (if (<= heap-size 1024)
         (set-ui! (dynamic-require `plai/gc2/private/gc-gui 'heap-viz%))
-        (printf "Large heap; the heap visualizer will not be displayed.\n")))
-  (init-allocator))  
+        (printf "Large heap; the heap visualizer will not be displayed.\n"))))  
 
 (define-for-syntax allocator-setup-error-msg
   "Mutator must start with an 'allocator-setup' expression, such as: (allocator-setup <module-path> <literal-number>)")
@@ -492,16 +681,34 @@
            ;; XXX make a macro to unify this and provide/lift
            (define id
              (lambda args
-               (unless (andmap (lambda (v) (and (location? v) (collector:flat? v))) args)
-                 (error 'id (string-append "all arguments must be <heap-value?>s, "
-                                           "even if the imported procedure accepts structured "
-                                           "data")))
-               (let ([result (apply renamed-id (map collector:deref args))])
+               (for ([arg (in-list args)])
+                 (unless ((lambda (v) 
+                            (or (and (location? v) 
+                                     (or (collector:flat? v)
+                                         (collector:cons? v)
+                                         (collector:closure? v)
+                                         (collector:vector? v)
+                                         (collector:struct-instance? v)))
+                                (procedure? v)))
+                          arg)
+                   (error 'id (string-append "all arguments must be <heap-value?>s, "
+                                             "or structured data of <heap-value?>s, "
+                                             "but got ~s\n") (heap-ref arg))))
+               (let ([result (apply renamed-id 
+                                    (map (λ (x) 
+                                           (cond [(or (procedure? x) (collector:closure? x)) (deref-proc x)]
+                                                 [(or (collector:flat? x) (collector:cons? x) (collector:vector? x) (collector:struct-instance? x))
+                                                  (gc->scheme x)]))
+                                         args))])
                  (cond
                    [(void? result) (void)]
-                   [(heap-value? result) (do-alloc-flat result)]
+                   [(or (heap-value? result)
+                        (pair? result)
+                        (vector? result))
+                    (do-alloc result)]
                    [else 
                     (error 'id (string-append "imported primitive must return <heap-value?>, "
+                                              "or structured data of <heap-valus?>s, "
                                               "received ~a" result))]))))
            ...))]
     [(_ maybe-id ...) 
@@ -522,7 +729,7 @@
                          stx)]
     [(id exp ...)
      #`(mutator-app #,p-id exp ...)]))
-    
+
 (define-syntax (provide-flat-prims/lift stx)
   (syntax-case stx ()
     [(_ prim-ids id ...)
@@ -537,14 +744,51 @@
 (provide-flat-prims/lift
  prim-ids
  symbol? boolean? number? symbol=?
- add1 sub1 zero? + - * / even? odd? = < > <= >=)
+ add1 sub1 zero? exact? + - * / even? odd? = < > <= >=)
 
 (define (member? v l)
   (and (member v l) #t))
+(provide (rename-out (mutator-member? member?)))
 (define (mutator-member? v l)
   (do-alloc-flat
-   (member? (collector:deref v)
+   (member? (gc->scheme v)
             (gc->scheme l))))
+
+(provide (rename-out (mutator-vector make-vector)))
+(define mutator-vector
+  (let ([vector
+         (lambda (l p)
+           (define-values (length loc)
+             (values (if (root? l) (read-root l) l)
+                     (if (root? p) (read-root p) p)))
+           (define roots (compute-current-roots))
+           (define-values (loc-roots no-loc-roots)
+             (partition (lambda (x) (= loc (read-root x))) roots))
+           (parameterize ([active-roots no-loc-roots])
+             (collector:vector (collector:deref length)
+                               (make-root 'loc
+                                          (lambda () loc)
+                                          (lambda (v)
+                                            (set! loc v)
+                                            (for ([r (in-list loc-roots)])
+                                              (set-root! r v)))))))])
+    vector))
+
+(provide (rename-out (mutator-vector-length vector-length)))
+(define (mutator-vector-length loc)
+  (do-alloc-flat (collector:vector-length loc)))
+
+(provide (rename-out (mutator-vector-ref vector-ref)))
+(define (mutator-vector-ref loc number)
+  (collector:vector-ref loc 
+                        (collector:deref number)))
+
+(provide (rename-out (mutator-vector-set! vector-set!)))
+(define (mutator-vector-set! loc number a-loc)
+  (collector:vector-set! loc 
+                         (collector:deref number)
+                         a-loc)
+  (void))
 
 (provide (rename-out (mutator-set-first! set-first!)))
 (define-syntax (mutator-set-first! stx)
@@ -572,6 +816,7 @@
     [_ (mutator-quote ())]))
 
 (provide (rename-out (mutator-empty? empty?)))
+(provide (rename-out (mutator-empty? null?)))
 (define (mutator-empty? loc)
   (cond
     [(collector:flat? loc) 
@@ -585,7 +830,19 @@
 
 (provide (rename-out [mutator-eq? eq?]))
 (define (mutator-eq? l1 l2)
-  (do-alloc-flat (= l1 l2)))
+  (cond
+    [(and (collector:flat? l1)
+          (collector:flat? l2))
+     (do-alloc-flat
+      (equal? (collector:deref l1)
+              (collector:deref l2)))]
+    [else (do-alloc-flat (= l1 l2))]))
+
+(provide (rename-out [mutator-equal? equal?]))
+(define (mutator-equal? l1 l2)
+  (do-alloc-flat
+   (or (= l1 l2)
+       (equal? (gc->scheme l1) (gc->scheme l2)))))
 
 (provide (rename-out [mutator-printf printf]))
 (define-syntax (mutator-printf stx)
@@ -632,10 +889,43 @@
    [else
     (error 'procedure-application "expected procedure, given ~e" v)]))
 
+(define (copy-gc-pair loc)
+  (cond [(and (collector:flat? loc)
+              (null? (collector:deref loc)))
+         '()]
+        [else (cons (collector:first loc)
+                    (copy-gc-pair (collector:rest loc)))]))
+
+(define (do-alloc value)
+  ;; value supports flat, cons, and vector
+  ;; any/c -> loc
+  (define (ahelper loc)
+    (define r (make-env-root loc))
+    (add-extra-root! r)
+    r)
+  (define (alloc val)
+    (cond [(heap-value? val) (ahelper (do-alloc-flat val))]
+          [(pair? val) (ahelper (mutator-cons (alloc (car val)) (alloc (cdr val))))]
+          [(vector? val) 
+           (let* ([vs (for/vector ([v (in-vector val)]) (alloc v))]
+                  [vec (ahelper (mutator-vector (alloc (vector-length val)) (alloc #f)))])
+             (for ([v (in-vector vs)] [i (in-naturals)])
+                  (collector:vector-set! vec i v))
+             vec)]
+          [else (error 'do-alloc "expected flat, pair or vector values, but get ~s" val)]))
+  (define result (alloc value))
+  (clear-extra-roots!)
+  (read-root result))
+
 (define (gc->scheme loc)
   (define-struct an-unset ())
   (define unset (make-an-unset))
   (define phs (make-hash))
+  (define (mk-s s fields)
+    (local [(define const (hash-ref sc
+                                    (format "#<procedure:~a>" s)
+                                    (λ () #f)))]
+      (apply const fields)))
   (define (unwrap loc)
     (if (hash-has-key? phs loc)
         (hash-ref phs loc)
@@ -654,8 +944,33 @@
               [(collector:closure? loc)
                ;; XXX get env?
                (placeholder-set! ph (closure-code-proc (collector:closure-code-ptr loc)))]
+              [(collector:vector? loc)
+               (local [(define vlen (collector:vector-length loc))
+                       (define vec (make-vector vlen 0))]
+                 (for ([i (in-range vlen)])
+                   (local [(define vp (make-placeholder unset))]
+                     (placeholder-set! vp (unwrap (collector:vector-ref loc i)))
+                     (vector-set! vec i vp)))
+                 (placeholder-set! ph vec))]
+              [(collector:struct-instance? loc)
+               (local [(define (struct-symbol loc)
+                         (heap-ref (+ 1 (heap-ref (+ loc 1)))))
+                       (define (struct-type loc)
+                         (heap-ref (+ loc 1)))
+                       (define (struct-fcount loc)
+                         (heap-ref (+ 3 (heap-ref (+ loc 1)))))
+                       (define (struct-fvals loc)
+                         (let ([s (struct-type loc)])
+                           (for/list ([i (in-range (struct-fcount loc))])
+                             (begin
+                               (define fp (make-placeholder unset))
+                               (placeholder-set! fp (unwrap (collector:struct-select s loc i)))
+                               fp))))]
+                 (placeholder-set! ph (mk-s (format "mutator:~a" (struct-symbol loc)) (struct-fvals loc))))]
               [else 
-               (error (format "gc:flat?, gc:cons?, gc:closure? all returned false for ~a" loc))])
+               (error (format (string-append "gc:flat?, gc:cons?, gc:closure?, gc:vector? gc:struct-instance? "
+                                             "all returned false for value ~s @ ~s")
+                              (heap-ref loc) loc))])
             (placeholder-get ph)))))
   (make-reader-graph (unwrap loc)))
 

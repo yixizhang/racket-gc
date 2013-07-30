@@ -7,14 +7,6 @@
   symbol->string list->string string-downcase string-length string-ref
   regexp-match regexp-replace* regexp-match-positions)
 
-(define hash (make-hash))
-(hash-set! hash 0 0)
-(hash-ref hash 0 (lambda () (void)))
-(hash-set! hash 1 1)
-(hash-ref hash 1 (lambda () (void)))
-(hash-set! hash 1 10)
-(hash-ref hash 1 (lambda () (void)))
-
 (not 100000)
 (not '(1 2))
 (define f0 (lambda () 0))
@@ -46,12 +38,14 @@
 (define local-odd? 'undefined)
 (define is-odd?
   (begin
-    (set! local-even? (λ (n)
-                        (or (= n 0)
-                            (local-odd? (sub1 n)))))
-    (set! local-odd? (λ (n)
-                       (and (not (= n 0))
-                            (local-even? (sub1 n)))))
+    (let ([f (lambda (n)
+               (or (= n 0)
+                   (local-odd? (sub1 n))))])
+      (set! local-even? f))
+    (let ([f (lambda (n)
+               (and (not (= n 0))
+                    (local-even? (sub1 n))))])
+      (set! local-odd? f))
     local-odd?))
 (is-odd? 11)
 (define a 1)
@@ -59,6 +53,7 @@
 (define (f x y)
   (when (< x y)
     (begin
+      (printf "x: ~s, y: ~s\n" x y)
       (printf "yes\n")
       (f (+ x 1) y))))
 (f a b)
