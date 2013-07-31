@@ -613,17 +613,6 @@
    (member? (gc->scheme v)
             (gc->scheme l))))
 
-(provide (rename-out [mutator-sort sort]))
-(define/primitive (mutator-sort seq less?)
-  (local [(define (alloc l)
-            (cond
-              [(null? l) (collector:alloc-flat empty)]
-              [else (collector:cons (car l) (alloc (cdr l)))]))]
-    (alloc
-     (sort (copy-gc-pair seq)
-           (lambda (a b)
-             (collector:deref ((deref-proc less?) a b)))))))
-
 (provide (rename-out (mutator-make-vector make-vector)))
 (define (mutator-make-vector length loc)
   (collector:vector (collector:deref length) 

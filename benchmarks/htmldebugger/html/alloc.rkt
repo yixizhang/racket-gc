@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 30)
+(allocator-setup "../../collector.rkt" 64)
 (import-primitives
  identity
  regexp-match

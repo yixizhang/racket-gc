@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 20)
+(allocator-setup "../../collector.rkt" 64)
 
 (if #t 0 1)
 (if '(0) 0 1)

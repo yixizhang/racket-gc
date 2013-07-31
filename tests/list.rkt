@@ -45,3 +45,11 @@
       (void)
       (begin (f (first l))
              (for-each f (rest l)))))
+;; sort : list proc -> list
+(define (sort l less?)
+  (let ([f (lambda (x) (less? x (car l)))])
+    (if (null? l)
+        l
+        (append (sort (filter f (cdr l)) less?)
+                (append (cons (car l) empty)
+                        (sort (filter (lambda (x) (if (f x) #f #t)) (cdr l)) less?))))))
