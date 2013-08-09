@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 2048)
+(allocator-setup "../../collector.rkt" 10240)
 (import-primitives
  not random integer->char open-input-string
  string string-ref string-length list->string string-append

@@ -589,17 +589,6 @@
            (provide (rename-out [id2 id] ...))
            (define-syntax id2 (mk-id-macro #'id)) ...))]))
 
-(define-syntax (define/primitive stx)
-  (syntax-case stx ()
-    [(_ (f x ...) expr)
-     (with-syntax ([(tmp ...) (generate-temporaries (syntax->list #'(x ...)))])
-       #`(define (f x ...)
-           (let ([tmp (make-env-root x)] ...)
-             (add-extra-roots! (list tmp ...))
-             (define loc expr)
-             (remove-extra-roots! (list tmp ...))
-             loc)))]))
-
 (provide-flat-prims/lift
  prim-ids
  symbol? boolean? number? symbol=?
@@ -612,6 +601,29 @@
   (collector:alloc-flat
    (member? (gc->scheme v)
             (gc->scheme l))))
+
+(provide (rename-out [mutator-sort sort]))
+(define (mutator-sort seq less?)
+  (define local-roots empty)
+  (local [(define (mk-root loc)
+            (define r (make-env-root loc))
+            (add-extra-root! r)
+            (set! local-roots (cons r local-roots))
+            r)
+          (define (alloc l)
+            (cond
+              [(null? l) (collector:alloc-flat empty)]
+              [else (collector:cons (car l) (alloc (cdr l)))]))]
+    (let ([result
+           (alloc
+            (sort (for/list ([i (copy-gc-pair seq)])
+                    (mk-root i))
+                  (lambda (a b)
+                    (collector:deref 
+                     ((deref-proc less?) (read-root a) 
+                                         (read-root b))))))])
+      (remove-extra-roots! local-roots)
+      result)))
 
 (provide (rename-out (mutator-make-vector make-vector)))
 (define (mutator-make-vector length loc)

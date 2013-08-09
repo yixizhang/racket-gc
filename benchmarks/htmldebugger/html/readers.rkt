@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 2048)
+(allocator-setup "../../collector.rkt" 10240)
 (require "sgml-reader.rkt")
 (require "html-spec.rkt")
 (import-primitives

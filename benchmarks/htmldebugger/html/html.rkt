@@ -1,5 +1,5 @@
 #lang plai/gc2/mutator
-(allocator-setup "../../collector.rkt" 2048)
+(allocator-setup "../../collector.rkt" 10240)
 (require "html-structs.rkt"
          "html-spec.rkt"
          "sgml-reader.rkt"
